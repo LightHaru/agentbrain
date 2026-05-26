@@ -1,6 +1,6 @@
 # Motivation Scores
 > Auto-managed by AgentBrain Basal Ganglia
-> Last updated: 2026-05-26T03:38:48.402Z
+> Last updated: 2026-05-26T05:13:05.696Z
 
 ## code-debugging
 - Motivation: ████░░░░░░░░░░░░░░░░ 20%

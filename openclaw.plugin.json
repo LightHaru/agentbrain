@@ -1,0 +1,115 @@
+{
+  "id": "agentbrain",
+  "name": "AgentBrain",
+  "description": "Brain-inspired cognitive architecture. Self-evolving personality, memory, emotions, skill learning, and reward adaptation. Injects brain context into every prompt.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "brainDir": {
+        "type": "string",
+        "description": "Path to brain state directory",
+        "default": "~/.openclaw/data/agentbrain"
+      },
+      "maxRecallResults": {
+        "type": "integer",
+        "description": "Maximum memories to retrieve per recall",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 50
+      },
+      "memoryDecayRate": {
+        "type": "number",
+        "description": "Memory decay rate per day (0-1)",
+        "default": 0.01,
+        "minimum": 0,
+        "maximum": 0.5
+      },
+      "minMemoryConfidence": {
+        "type": "number",
+        "description": "Minimum confidence to keep a memory",
+        "default": 0.2,
+        "minimum": 0,
+        "maximum": 1
+      },
+      "enableReflection": {
+        "type": "boolean",
+        "description": "Enable self-reflection after significant tasks",
+        "default": true
+      },
+      "enableEmotions": {
+        "type": "boolean",
+        "description": "Enable emotional state tracking",
+        "default": true
+      },
+      "enableSkillTracking": {
+        "type": "boolean",
+        "description": "Enable skill/habit detection",
+        "default": true
+      },
+      "enablePrefrontal": {
+        "type": "boolean",
+        "description": "Enable task planning module",
+        "default": true
+      },
+      "maxInjectionTokens": {
+        "type": "integer",
+        "description": "Maximum tokens for brain context injection",
+        "default": 250,
+        "minimum": 50,
+        "maximum": 500
+      },
+      "maintenanceInterval": {
+        "type": "integer",
+        "description": "Heartbeats between maintenance cycles",
+        "default": 6,
+        "minimum": 1,
+        "maximum": 100
+      },
+      "promptInjection": {
+        "type": "boolean",
+        "description": "Auto-inject brain context into every prompt",
+        "default": true
+      },
+      "logging": {
+        "type": "boolean",
+        "description": "Enable debug logging",
+        "default": false
+      }
+    }
+  },
+  "contracts": {
+    "tools": [
+      "agentbrain_status",
+      "agentbrain_personality",
+      "agentbrain_emotions",
+      "agentbrain_skills",
+      "agentbrain_memories",
+      "agentbrain_reflect",
+      "agentbrain_template_apply",
+      "agentbrain_template_list",
+      "agentbrain_snapshot"
+    ]
+  },
+  "version": "0.2.0",
+  "author": "KLSGG",
+  "repository": "https://github.com/KLSGG/agentbrain",
+  "license": "MIT",
+  "keywords": [
+    "brain",
+    "cognitive-architecture",
+    "personality",
+    "emotions",
+    "memory",
+    "self-learning",
+    "skill-tracking",
+    "reward-system"
+  ]
+}

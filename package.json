@@ -2,8 +2,21 @@
   "name": "agentbrain",
   "version": "0.2.0",
   "description": "Brain-inspired cognitive architecture plugin for AI agents. Self-evolving personality, memory, emotions, and learning.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "openclaw": {
+    "extensions": [
+      "./dist/plugin/entry.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": ">=2026.3.24",
+      "entry": "dist/plugin/entry.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

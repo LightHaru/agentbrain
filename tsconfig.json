@@ -13,8 +13,11 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "paths": {
+      "openclaw/plugin-sdk/plugin-entry": ["./src/plugin/openclaw-sdk-stub.d.ts"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "plugin/**/*"],
   "exclude": ["node_modules", "dist", "tests", "brain"]
 }
