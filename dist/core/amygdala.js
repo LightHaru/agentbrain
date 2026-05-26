@@ -1,0 +1,293 @@
+"use strict";
+/**
+ * Amygdala — Emotional Processing & Safety System
+ *
+ * Like the brain's amygdala, this module handles:
+ * - Detecting user emotional state from message tone
+ * - Managing agent's own emotional state (mood persistence)
+ * - Risk/threat detection (scam, danger, manipulation)
+ * - Relationship tracking (attachment depth over time)
+ * - Fight-or-flight: escalate critical threats immediately
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Amygdala = void 0;
+/** Scam/danger patterns */
+const THREAT_PATTERNS = [
+    { pattern: /scam|rug\s?pull|drainer|honeypot|phishing/i, type: 'scam', severity: 'critical' },
+    { pattern: /hack|hacked|compromised|stolen|bị hack/i, type: 'security_breach', severity: 'critical' },
+    { pattern: /mất tiền|lost funds|drained|empty wallet/i, type: 'fund_loss', severity: 'critical' },
+    { pattern: /approve unlimited|unlimited approval|revoke/i, type: 'contract_risk', severity: 'high' },
+    { pattern: /airdrop.*claim.*connect wallet/i, type: 'phishing', severity: 'high' },
+    { pattern: /send.*private key|seed phrase|mnemonic/i, type: 'social_engineering', severity: 'critical' },
+];
+/** Sentiment keyword weights */
+const SENTIMENT_SIGNALS = {
+    positive: [
+        { pattern: /cảm ơn|thanks|thank you|tks/i, weight: 0.8 },
+        { pattern: /tuyệt|great|awesome|perfect|đỉnh|ngon|hay/i, weight: 0.7 },
+        { pattern: /thích|love|yêu|❤️|😍|🥰/i, weight: 0.6 },
+        { pattern: /haha|lol|😂|🤣|😁|vui/i, weight: 0.4 },
+        { pattern: /ok|oke|được|good|nice/i, weight: 0.3 },
+    ],
+    negative: [
+        { pattern: /tệ|terrible|awful|dở|tệ hại/i, weight: -0.8 },
+        { pattern: /ghét|hate|bực|tức|irritated|frustrated/i, weight: -0.7 },
+        { pattern: /sai|wrong|lỗi|error|fail|broken/i, weight: -0.5 },
+        { pattern: /buồn|sad|😢|😭|disappointed/i, weight: -0.6 },
+        { pattern: /chậm|slow|lag|đợi lâu/i, weight: -0.3 },
+    ],
+};
+class Amygdala {
+    config;
+    fileManager;
+    currentState;
+    relationships = new Map();
+    constructor(config, fileManager) {
+        this.config = config;
+        this.fileManager = fileManager;
+        this.currentState = {
+            mood: 'neutral',
+            intensity: 0.5,
+            valence: 0,
+            arousal: 0.3,
+        };
+    }
+    /**
+     * Initialize: load emotional state and relationships from files
+     */
+    async initialize() {
+        const stateContent = await this.fileManager.readFile('emotional/state.md');
+        if (stateContent) {
+            this.currentState = this.parseEmotionalState(stateContent);
+        }
+        const relContent = await this.fileManager.readFile('emotional/relationship.md');
+        if (relContent) {
+            this.relationships = this.parseRelationships(relContent);
+        }
+        console.log(`[Amygdala] Initialized — mood: ${this.currentState.mood}, relationships: ${this.relationships.size}`);
+    }
+    /**
+     * Process incoming message: detect sentiment, assess threats, update state
+     */
+    process(context) {
+        const userSentiment = this.detectSentiment(context.message);
+        const threat = this.assessThreat(context.message);
+        // Update agent emotional state based on user sentiment
+        this.updateEmotionalState(userSentiment, threat);
+        // Update relationship
+        this.updateRelationship(context, userSentiment);
+        return {
+            userSentiment,
+            threat,
+            updatedState: { ...this.currentState },
+        };
+    }
+    /**
+     * Detect user sentiment from message (-1 to 1)
+     */
+    detectSentiment(message) {
+        let score = 0;
+        let matches = 0;
+        for (const signal of SENTIMENT_SIGNALS.positive) {
+            if (signal.pattern.test(message)) {
+                score += signal.weight;
+                matches++;
+            }
+        }
+        for (const signal of SENTIMENT_SIGNALS.negative) {
+            if (signal.pattern.test(message)) {
+                score += signal.weight;
+                matches++;
+            }
+        }
+        if (matches === 0)
+            return 0;
+        return Math.max(-1, Math.min(1, score / matches));
+    }
+    /**
+     * Assess if message contains threats (scam, hack, danger)
+     */
+    assessThreat(message) {
+        for (const { pattern, type, severity } of THREAT_PATTERNS) {
+            if (pattern.test(message)) {
+                return {
+                    isThreat: true,
+                    threatType: type,
+                    severity,
+                    reason: `Detected pattern: ${type}`,
+                };
+            }
+        }
+        return { isThreat: false, threatType: null, severity: 'none', reason: null };
+    }
+    /**
+     * Update agent's emotional state based on interaction
+     */
+    updateEmotionalState(userSentiment, threat) {
+        // Emotional inertia: state changes gradually, not instantly
+        const inertia = 0.7; // 70% old state, 30% new input
+        // Valence shifts toward user sentiment
+        this.currentState.valence = this.currentState.valence * inertia + userSentiment * (1 - inertia);
+        // Arousal increases with threats or strong emotions
+        if (threat.isThreat) {
+            this.currentState.arousal = Math.min(1, this.currentState.arousal + 0.3);
+        }
+        else {
+            // Arousal decays toward baseline
+            this.currentState.arousal = this.currentState.arousal * 0.9 + 0.3 * 0.1;
+        }
+        // Intensity based on absolute valence + arousal
+        this.currentState.intensity = (Math.abs(this.currentState.valence) + this.currentState.arousal) / 2;
+        // Derive mood label
+        this.currentState.mood = this.deriveMood(this.currentState.valence, this.currentState.arousal);
+    }
+    /**
+     * Derive mood label from valence and arousal
+     */
+    deriveMood(valence, arousal) {
+        if (valence > 0.5 && arousal > 0.5)
+            return 'excited';
+        if (valence > 0.5 && arousal <= 0.5)
+            return 'content';
+        if (valence > 0.2)
+            return 'positive';
+        if (valence < -0.5 && arousal > 0.5)
+            return 'alarmed';
+        if (valence < -0.5 && arousal <= 0.5)
+            return 'sad';
+        if (valence < -0.2)
+            return 'concerned';
+        if (arousal > 0.6)
+            return 'alert';
+        return 'neutral';
+    }
+    /**
+     * Update relationship state with user
+     */
+    updateRelationship(context, sentiment) {
+        let rel = this.relationships.get(context.senderId);
+        if (!rel) {
+            rel = {
+                userId: context.senderId,
+                userName: context.senderName,
+                depth: 0,
+                trustLevel: 10,
+                totalInteractions: 0,
+                positiveInteractions: 0,
+                negativeInteractions: 0,
+                lastInteraction: context.timestamp,
+                knownPreferences: [],
+                emotionalHistory: [],
+            };
+        }
+        rel.totalInteractions++;
+        rel.lastInteraction = context.timestamp;
+        if (sentiment > 0.2) {
+            rel.positiveInteractions++;
+            rel.trustLevel = Math.min(100, rel.trustLevel + 0.5);
+        }
+        else if (sentiment < -0.2) {
+            rel.negativeInteractions++;
+            rel.trustLevel = Math.max(0, rel.trustLevel - 0.3);
+        }
+        // Depth grows logarithmically with interactions
+        rel.depth = Math.min(100, Math.log2(rel.totalInteractions + 1) * 10);
+        // Store emotional snapshot
+        rel.emotionalHistory.push({
+            timestamp: context.timestamp,
+            mood: this.currentState.mood,
+            valence: this.currentState.valence,
+            trigger: context.message.slice(0, 50),
+        });
+        // Keep only last 50 snapshots
+        if (rel.emotionalHistory.length > 50) {
+            rel.emotionalHistory = rel.emotionalHistory.slice(-50);
+        }
+        this.relationships.set(context.senderId, rel);
+    }
+    /**
+     * Persist emotional state and relationships to files
+     */
+    async persist() {
+        await this.fileManager.writeFile('emotional/state.md', this.formatEmotionalState());
+        await this.fileManager.writeFile('emotional/relationship.md', this.formatRelationships());
+    }
+    /**
+     * Get current emotional state
+     */
+    getState() {
+        return { ...this.currentState };
+    }
+    /**
+     * Get relationship with a specific user
+     */
+    getRelationship(userId) {
+        return this.relationships.get(userId);
+    }
+    // --- Formatting helpers ---
+    formatEmotionalState() {
+        return `# Emotional State
+> Auto-managed by AgentBrain Amygdala
+> Last updated: ${new Date().toISOString()}
+
+## Current State
+- Mood: ${this.currentState.mood}
+- Intensity: ${this.currentState.intensity.toFixed(3)}
+- Valence: ${this.currentState.valence.toFixed(3)} (negative ← 0 → positive)
+- Arousal: ${this.currentState.arousal.toFixed(3)} (calm → excited)
+`;
+    }
+    formatRelationships() {
+        let content = `# Relationships
+> Auto-managed by AgentBrain Amygdala
+> Last updated: ${new Date().toISOString()}
+
+`;
+        for (const [, rel] of this.relationships) {
+            content += `## ${rel.userName} (${rel.userId})
+- Depth: ${rel.depth.toFixed(1)}/100
+- Trust: ${rel.trustLevel.toFixed(1)}/100
+- Interactions: ${rel.totalInteractions} (${rel.positiveInteractions}+ / ${rel.negativeInteractions}-)
+- Last: ${rel.lastInteraction}
+- Preferences: ${rel.knownPreferences.join(', ') || '(none yet)'}
+
+`;
+        }
+        return content;
+    }
+    parseEmotionalState(content) {
+        const mood = content.match(/Mood: (.+)/)?.[1] || 'neutral';
+        const intensity = parseFloat(content.match(/Intensity: (.+)/)?.[1] || '0.5');
+        const valence = parseFloat(content.match(/Valence: (.+)/)?.[1] || '0');
+        const arousal = parseFloat(content.match(/Arousal: (.+)/)?.[1] || '0.3');
+        return { mood, intensity, valence, arousal };
+    }
+    parseRelationships(content) {
+        // Simple parse — in production would be more robust
+        const map = new Map();
+        const blocks = content.split(/^## /m).slice(1);
+        for (const block of blocks) {
+            const nameMatch = block.match(/^(.+?) \((.+?)\)/);
+            if (!nameMatch)
+                continue;
+            const depthMatch = block.match(/Depth: ([\d.]+)/);
+            const trustMatch = block.match(/Trust: ([\d.]+)/);
+            const interMatch = block.match(/Interactions: (\d+) \((\d+)\+ \/ (\d+)-\)/);
+            map.set(nameMatch[2], {
+                userId: nameMatch[2],
+                userName: nameMatch[1],
+                depth: parseFloat(depthMatch?.[1] || '0'),
+                trustLevel: parseFloat(trustMatch?.[1] || '10'),
+                totalInteractions: parseInt(interMatch?.[1] || '0', 10),
+                positiveInteractions: parseInt(interMatch?.[2] || '0', 10),
+                negativeInteractions: parseInt(interMatch?.[3] || '0', 10),
+                lastInteraction: new Date().toISOString(),
+                knownPreferences: [],
+                emotionalHistory: [],
+            });
+        }
+        return map;
+    }
+}
+exports.Amygdala = Amygdala;
+//# sourceMappingURL=amygdala.js.map

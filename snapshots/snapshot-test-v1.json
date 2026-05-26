@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "timestamp": "2026-05-26T03:38:48.350Z",
+  "brainDir": "/home/aira/.openclaw/workspace/projects/agentbrain/.test-brain-phase6",
+  "files": {
+    "emotional/state.md": "# State\n- Mood: content\n",
+    "memory/episodic.md": "# Episodic\nid: mem-1\ncontent: test memory\n",
+    "personality.md": "# Personality\n- Warmth: 60\n"
+  },
+  "metadata": {
+    "totalMemories": 1,
+    "totalSkills": 0,
+    "totalReflections": 0,
+    "personality": {
+      "warmth": 60
+    },
+    "mood": "content",
+    "interactionCount": 0
+  }
+}
