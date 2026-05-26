@@ -7,10 +7,12 @@
  * - message_sent: consolidate memory, track skills, process reward
  * - agent_end: session reflection + persist brain state
  * 
- * Format matches agent-memory-graph plugin pattern.
+ * Self-contained: does not import from openclaw/plugin-sdk at compile time.
+ * OpenClaw gateway loads this file and calls .register(api).
  */
 
-import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
+// Inline definePluginEntry — matches OpenClaw's expected export shape
+function definePluginEntry(def: any) { return def; }
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { Thalamus } from '../core/thalamus.js';
@@ -104,7 +106,7 @@ async function ensureInitialized(config: any): Promise<boolean> {
   }
 }
 
-export default definePluginEntry({
+const _plugin = definePluginEntry({
   id: 'agentbrain',
   name: 'AgentBrain',
   description: 'Brain-inspired cognitive architecture. Self-evolving personality, memory, emotions, skill learning.',
@@ -335,10 +337,11 @@ export default definePluginEntry({
 
     // ─── TOOLS ───
 
-    api.registerTool('agentbrain_status', {
+    api.registerTool({
+      name: 'agentbrain_status',
       description: 'Get AgentBrain status: modules, stats, emotional state, personality',
       parameters: {},
-      handler: async (_params: any, ctx: any) => {
+      execute: async (_id: string, _params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -366,10 +369,11 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_personality', {
+    api.registerTool({
+      name: 'agentbrain_personality',
       description: 'Get or view current personality traits (0-100 scale)',
       parameters: {},
-      handler: async (_params: any, ctx: any) => {
+      execute: async (_id: string, _params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -380,7 +384,8 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_emotions', {
+    api.registerTool({
+      name: 'agentbrain_emotions',
       description: 'Get current emotional state and relationship data',
       parameters: {
         type: 'object',
@@ -388,7 +393,7 @@ export default definePluginEntry({
           userId: { type: 'string', description: 'User ID to get relationship for' },
         },
       },
-      handler: async (params: any, ctx: any) => {
+      execute: async (_id: string, params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -400,10 +405,11 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_skills', {
+    api.registerTool({
+      name: 'agentbrain_skills',
       description: 'Get tracked skills and detected habits',
       parameters: {},
-      handler: async (_params: any, ctx: any) => {
+      execute: async (_id: string, _params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -415,7 +421,8 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_memories', {
+    api.registerTool({
+      name: 'agentbrain_memories',
       description: 'Query brain memories by topic or keyword',
       parameters: {
         type: 'object',
@@ -425,7 +432,7 @@ export default definePluginEntry({
         },
         required: ['query'],
       },
-      handler: async (params: any, ctx: any) => {
+      execute: async (_id: string, params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -434,7 +441,8 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_reflect', {
+    api.registerTool({
+      name: 'agentbrain_reflect',
       description: 'Trigger a manual self-reflection on recent interactions',
       parameters: {
         type: 'object',
@@ -443,7 +451,7 @@ export default definePluginEntry({
           outcome: { type: 'string', enum: ['success', 'partial', 'failure'] },
         },
       },
-      handler: async (params: any, ctx: any) => {
+      execute: async (_id: string, params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -459,10 +467,11 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_template_list', {
+    api.registerTool({
+      name: 'agentbrain_template_list',
       description: 'List available brain templates',
       parameters: {},
-      handler: async (_params: any, ctx: any) => {
+      execute: async (_id: string, _params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -470,7 +479,8 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_template_apply', {
+    api.registerTool({
+      name: 'agentbrain_template_apply',
       description: 'Apply a brain template (resets personality/emotions/skills to template baseline)',
       parameters: {
         type: 'object',
@@ -479,7 +489,7 @@ export default definePluginEntry({
         },
         required: ['templateId'],
       },
-      handler: async (params: any, ctx: any) => {
+      execute: async (_id: string, params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -490,7 +500,8 @@ export default definePluginEntry({
       },
     });
 
-    api.registerTool('agentbrain_snapshot', {
+    api.registerTool({
+      name: 'agentbrain_snapshot',
       description: 'Save or list brain state snapshots (backup/restore)',
       parameters: {
         type: 'object',
@@ -500,7 +511,7 @@ export default definePluginEntry({
         },
         required: ['action'],
       },
-      handler: async (params: any, ctx: any) => {
+      execute: async (_id: string, params: any, ctx: any) => {
         if (!await ensureInitialized(ctx?.pluginConfig)) {
           return { error: 'AgentBrain not initialized' };
         }
@@ -516,3 +527,6 @@ export default definePluginEntry({
     });
   },
 });
+
+// OpenClaw plugin loader expects module.exports directly
+export = _plugin;
