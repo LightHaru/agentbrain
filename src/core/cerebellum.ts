@@ -53,6 +53,13 @@ const SKILL_PATTERNS: Record<string, RegExp[]> = {
   'social-media': [/tweet|post|thread|đăng|twitter|x\b/i],
 };
 
+/** Relationship patterns for habit detection */
+const RELATIONSHIP_PATTERNS: Record<string, RegExp[]> = {
+  'nickname-usage': [/gà mập|gà|em yêu|baby|bé|cutie|kute/i],
+  'greeting-style': [/chào|hi|hello|hey|yo/i],
+  'time-of-day': [/sáng|chiều|tối|đêm|morning|afternoon|evening|night/i],
+};
+
 export class Cerebellum {
   private config: BrainConfig;
   private fileManager: BrainFileManager;
@@ -176,6 +183,54 @@ export class Cerebellum {
         };
         this.habits.push(newHabit);
         return newHabit;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect relationship patterns (nicknames, greetings, time-of-day)
+   */
+  detectRelationshipPattern(message: string, timestamp: string): Habit | null {
+    for (const [patternType, patterns] of Object.entries(RELATIONSHIP_PATTERNS)) {
+      for (const pattern of patterns) {
+        if (pattern.test(message)) {
+          this.recentPatterns.push({ pattern: patternType, timestamp });
+
+          // Keep only last 100 patterns
+          if (this.recentPatterns.length > 100) {
+            this.recentPatterns = this.recentPatterns.slice(-100);
+          }
+
+          const count = this.recentPatterns.filter(p => p.pattern === patternType).length;
+
+          if (count >= 5) {
+            const existingHabit = this.habits.find(h => h.pattern === patternType);
+
+            if (existingHabit) {
+              existingHabit.frequency = count;
+              existingHabit.lastSeen = timestamp;
+              existingHabit.confidence = Math.min(1, count / 10);
+              return existingHabit;
+            } else {
+              const newHabit: Habit = {
+                id: `habit-${Date.now().toString(36)}`,
+                pattern: patternType,
+                action: `Recognize ${patternType} pattern`,
+                frequency: count,
+                confidence: count / 10,
+                firstSeen: this.recentPatterns.find(p => p.pattern === patternType)?.timestamp || timestamp,
+                lastSeen: timestamp,
+                active: true,
+              };
+              this.habits.push(newHabit);
+              return newHabit;
+            }
+          }
+
+          return null;
+        }
       }
     }
 

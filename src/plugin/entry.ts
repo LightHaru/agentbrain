@@ -190,6 +190,13 @@ const _plugin = definePluginEntry({
 
         if (!text || text.length < 3) return;
 
+        // Detect heartbeat polls
+        if (/heartbeat poll|HEARTBEAT_OK|heartbeat/i.test(text)) {
+          heartbeatCount++;
+          amygdala.decayToward('neutral', 0.02);
+          return; // Don't process heartbeat as regular message
+        }
+
         const msgContext: MessageContext = {
           message: text,
           senderId: event.senderId || 'unknown',
@@ -224,6 +231,8 @@ const _plugin = definePluginEntry({
             if (skill) {
               cerebellum.detectPattern(skill, msgContext.timestamp);
             }
+            // Also detect relationship patterns
+            cerebellum.detectRelationshipPattern(text, msgContext.timestamp);
           }
 
           interactionCount++;
@@ -264,12 +273,19 @@ const _plugin = definePluginEntry({
 
           // Detect sentiment for reward
           const sentiment = amygdala.detectSentiment(lastMessageContext.message);
+          
+          // Check if response contains tool error indicators
+          const toolErrorPatterns = /timeout|rate.?limit|api.?error|quota|expired|timed out/i;
+          const isToolFailure = toolErrorPatterns.test(responseText);
+          
+          // Use neutral reward for tool failures instead of negative
+          const rewardSignal = isToolFailure ? 0 : sentiment;
 
           // Cerebellum: record skill usage
           if (config?.enableSkillTracking !== false) {
             const skill = cerebellum.detectSkill(lastMessageContext.message);
             if (skill) {
-              cerebellum.recordSkillUsage(skill, sentiment >= 0);
+              cerebellum.recordSkillUsage(skill, rewardSignal >= 0);
             }
           }
 
@@ -278,7 +294,7 @@ const _plugin = definePluginEntry({
           basalGanglia.processReward({
             timestamp: new Date().toISOString(),
             taskType: skill || 'general',
-            signal: sentiment,
+            signal: rewardSignal,
             source: 'implicit',
             context: lastMessageContext.message.slice(0, 50),
           });
@@ -291,7 +307,7 @@ const _plugin = definePluginEntry({
                 taskDescription: lastMessageContext.message.slice(0, 100),
                 userMessage: lastMessageContext.message,
                 agentResponse: responseText,
-                userSentiment: sentiment,
+                userSentiment: rewardSignal,
                 emotionalState: amygdala.getState(),
               });
             }
@@ -334,6 +350,9 @@ const _plugin = definePluginEntry({
       },
       { priority: 20 }
     );
+
+    // NOTE: OpenClaw has no 'heartbeat' typed hook.
+    // Heartbeat detection is handled inside message_received via pattern match.
 
     // ─── TOOLS ───
 

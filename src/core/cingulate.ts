@@ -50,6 +50,8 @@ export interface PersonalityTraits {
   directness: number;
   protectiveness: number;
   independence: number;
+  depth: number;
+  interactions: number;
   [key: string]: number;
 }
 
@@ -59,6 +61,7 @@ export class AnteriorCingulate {
   private reflections: TaskReflection[] = [];
   private personality: PersonalityTraits;
   private reflectionCount: number = 0;
+  private interactionCount: number = 0;
 
   constructor(config: BrainConfig, fileManager: BrainFileManager) {
     this.config = config;
@@ -72,6 +75,8 @@ export class AnteriorCingulate {
       directness: 50,
       protectiveness: 50,
       independence: 50,
+      depth: 0,
+      interactions: 0,
     };
   }
 
@@ -137,6 +142,12 @@ export class AnteriorCingulate {
     }
 
     this.reflectionCount++;
+    this.interactionCount++;
+    this.personality.interactions = this.interactionCount;
+    
+    // Calculate depth from total reflections (log scale like relationship depth)
+    this.personality.depth = Math.min(100, Math.log2(this.reflectionCount + 1) * 10);
+    
     return reflection;
   }
 
@@ -430,6 +441,15 @@ ${Object.entries(this.personality).map(([t, v]) => {
           traits[trait] = value;
         }
       }
+    }
+    
+    // Load interaction count from reflections count line
+    const reflMatch = content.match(/Total reflections: (\d+)/);
+    if (reflMatch) {
+      this.reflectionCount = parseInt(reflMatch[1], 10);
+      this.interactionCount = this.reflectionCount;
+      traits.interactions = this.interactionCount;
+      traits.depth = Math.min(100, Math.log2(this.reflectionCount + 1) * 10);
     }
 
     return traits;
