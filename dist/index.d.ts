@@ -9,6 +9,10 @@ import { Thalamus } from './core/thalamus.js';
 import { Hippocampus } from './core/hippocampus.js';
 import { BrainFileManager } from './storage/md-writer.js';
 import { BrainConfig } from './core/config.js';
+import { TemporalLobe } from './core/temporal.js';
+import { ParietalLobe } from './core/parietal.js';
+import { Insula } from './core/insula.js';
+import { Metacognition } from './core/metacognition.js';
 export { Thalamus } from './core/thalamus.js';
 export { Hippocampus } from './core/hippocampus.js';
 export { Amygdala } from './core/amygdala.js';
@@ -16,6 +20,11 @@ export { AnteriorCingulate } from './core/cingulate.js';
 export { Cerebellum } from './core/cerebellum.js';
 export { BasalGanglia } from './core/basal-ganglia.js';
 export { PrefrontalCortex } from './core/prefrontal.js';
+export { TemporalLobe } from './core/temporal.js';
+export { ParietalLobe } from './core/parietal.js';
+export { Insula } from './core/insula.js';
+export { WorkingMemory } from './core/working-memory.js';
+export { Metacognition } from './core/metacognition.js';
 export { BrainFileManager } from './storage/md-writer.js';
 export { BrainConfig, defaultConfig } from './core/config.js';
 export { createOpenClawPlugin } from './integration/openclaw-plugin.js';
@@ -28,6 +37,10 @@ export interface AgentBrainPlugin {
     thalamus: Thalamus;
     hippocampus: Hippocampus;
     fileManager: BrainFileManager;
+    temporal: TemporalLobe;
+    parietal: ParietalLobe;
+    insula: Insula;
+    metacognition: Metacognition;
     initialize(): Promise<void>;
     onPreResponse(context: MessageContext): Promise<BrainContext>;
     onPostResponse(context: MessageContext, response: string): Promise<void>;
@@ -47,6 +60,10 @@ export interface BrainContext {
     relevantMemories: Memory[];
     emotionalState: EmotionalState;
     activeSkills: string[];
+    semanticRepresentation?: any;
+    percept?: any;
+    userState?: any;
+    metacognitiveState?: any;
 }
 export interface MessageClassification {
     intent: string;
