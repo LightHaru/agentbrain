@@ -45,6 +45,8 @@ export interface PersonalityTraits {
     directness: number;
     protectiveness: number;
     independence: number;
+    depth: number;
+    interactions: number;
     [key: string]: number;
 }
 export declare class AnteriorCingulate {
@@ -53,6 +55,7 @@ export declare class AnteriorCingulate {
     private reflections;
     private personality;
     private reflectionCount;
+    private interactionCount;
     constructor(config: BrainConfig, fileManager: BrainFileManager);
     /**
      * Initialize: load personality traits and past reflections

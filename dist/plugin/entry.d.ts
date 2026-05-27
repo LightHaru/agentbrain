@@ -7,8 +7,9 @@
  * - message_sent: consolidate memory, track skills, process reward
  * - agent_end: session reflection + persist brain state
  *
- * Format matches agent-memory-graph plugin pattern.
+ * Self-contained: does not import from openclaw/plugin-sdk at compile time.
+ * OpenClaw gateway loads this file and calls .register(api).
  */
-declare const _default: import("openclaw/plugin-sdk/plugin-entry").PluginDefinition;
-export default _default;
+declare const _plugin: any;
+export = _plugin;
 //# sourceMappingURL=entry.d.ts.map

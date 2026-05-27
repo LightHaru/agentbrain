@@ -59,6 +59,10 @@ export declare class Cerebellum {
      */
     detectPattern(message: string, timestamp: string): Habit | null;
     /**
+     * Detect relationship patterns (nicknames, greetings, time-of-day)
+     */
+    detectRelationshipPattern(message: string, timestamp: string): Habit | null;
+    /**
      * Get top skills by proficiency
      */
     getTopSkills(n?: number): Skill[];

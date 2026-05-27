@@ -86,7 +86,7 @@ class Hippocampus {
             }
         }
         // Persist if buffer is getting large
-        if (this.shortTermBuffer.length >= 5) {
+        if (this.shortTermBuffer.length >= 3) {
             await this.persist();
             this.shortTermBuffer = [];
         }
@@ -106,6 +106,15 @@ class Hippocampus {
                 importance: 0.7,
             });
         }
+        // Episodic: emotional messages (teasing, praising, angry)
+        if (/gà mập|gà|kute|cute|giỏi|đỉnh|ngon|hay|tuyệt|khùng|ngu|dở|chán|tệ|ghét|yêu|thương/.test(msg)) {
+            candidates.push({
+                content: `[${turn.senderName}] ${msg}`,
+                type: 'episodic',
+                tags: [...this.extractTags(msg), 'emotional'],
+                importance: 0.6,
+            });
+        }
         // Semantic: user shared a fact or preference
         if (/là|thích|ghét|muốn|cần|prefer|always|never|luôn|không bao giờ/.test(msg)) {
             candidates.push({
@@ -115,6 +124,16 @@ class Hippocampus {
                 importance: 0.6,
             });
         }
+        // Semantic: nicknames/pet names used repeatedly
+        const nicknameMatch = msg.match(/gà mập|gà|em yêu|baby|bé|cutie|kute/);
+        if (nicknameMatch) {
+            candidates.push({
+                content: `[${turn.senderName} calls agent: ${nicknameMatch[0]}]`,
+                type: 'semantic',
+                tags: ['nickname', 'relationship'],
+                importance: 0.5,
+            });
+        }
         // Procedural: a workflow or how-to was discussed
         if (/cách|how to|step|bước|workflow|process|quy trình|command|lệnh/.test(msg)) {
             candidates.push({
@@ -122,6 +141,25 @@ class Hippocampus {
                 type: 'procedural',
                 tags: [...this.extractTags(msg), 'howto'],
                 importance: 0.5,
+            });
+        }
+        // Procedural: technical decisions/configs
+        if (/config|setting|setup|install|deploy|build|api|token|key/.test(msg)) {
+            candidates.push({
+                content: `[Technical decision] ${msg}`,
+                type: 'procedural',
+                tags: [...this.extractTags(msg), 'technical'],
+                importance: 0.5,
+            });
+        }
+        // Strong sentiment messages → episodic
+        const sentiment = this.detectStrongSentiment(msg);
+        if (Math.abs(sentiment) > 0.4) {
+            candidates.push({
+                content: `[${turn.senderName}] ${msg}`,
+                type: 'episodic',
+                tags: [...this.extractTags(msg), sentiment > 0 ? 'positive' : 'negative'],
+                importance: 0.6,
             });
         }
         // If nothing matched but message is substantial, store as low-importance episodic
@@ -173,6 +211,21 @@ class Hippocampus {
         await this.fileManager.writeMemoryFile('episodic', episodic);
         await this.fileManager.writeMemoryFile('semantic', semantic);
         await this.fileManager.writeMemoryFile('procedural', procedural);
+    }
+    /**
+     * Detect strong sentiment for memory importance
+     */
+    detectStrongSentiment(message) {
+        let score = 0;
+        // Positive
+        if (/đỉnh|giỏi|kute|cute|hay|tuyệt|ngon|ổn|ok.*rồi|good|nice|great|hehe|hihi|❤/i.test(message)) {
+            score += 0.5;
+        }
+        // Negative/teasing
+        if (/gà mập|gà|mập|khùng|ngu|dở|chán|tệ|fail|die|chết/i.test(message)) {
+            score -= 0.3;
+        }
+        return score;
     }
     /**
      * Extract topic tags from text

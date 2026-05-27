@@ -74,6 +74,10 @@ export declare class Amygdala {
      */
     private updateRelationship;
     /**
+     * Decay emotional state toward neutral (for heartbeat)
+     */
+    decayToward(target: string, amount: number): void;
+    /**
      * Persist emotional state and relationships to files
      */
     persist(): Promise<void>;

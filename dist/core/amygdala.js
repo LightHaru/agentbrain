@@ -28,6 +28,7 @@ const SENTIMENT_SIGNALS = {
         { pattern: /thích|love|yêu|❤️|😍|🥰/i, weight: 0.6 },
         { pattern: /haha|lol|😂|🤣|😁|vui/i, weight: 0.4 },
         { pattern: /ok|oke|được|good|nice/i, weight: 0.3 },
+        { pattern: /giỏi|kute|cute|hehe|hihi/i, weight: 0.5 },
     ],
     negative: [
         { pattern: /tệ|terrible|awful|dở|tệ hại/i, weight: -0.8 },
@@ -35,6 +36,10 @@ const SENTIMENT_SIGNALS = {
         { pattern: /sai|wrong|lỗi|error|fail|broken/i, weight: -0.5 },
         { pattern: /buồn|sad|😢|😭|disappointed/i, weight: -0.6 },
         { pattern: /chậm|slow|lag|đợi lâu/i, weight: -0.3 },
+    ],
+    teasing: [
+        { pattern: /gà mập|gà|mập|khùng|ngu/i, weight: -0.2 },
+        { pattern: /chán|die|chết/i, weight: -0.1 },
     ],
 };
 class Amygdala {
@@ -100,6 +105,12 @@ class Amygdala {
                 matches++;
             }
         }
+        for (const signal of SENTIMENT_SIGNALS.teasing) {
+            if (signal.pattern.test(message)) {
+                score += signal.weight;
+                matches++;
+            }
+        }
         if (matches === 0)
             return 0;
         return Math.max(-1, Math.min(1, score / matches));
@@ -125,7 +136,7 @@ class Amygdala {
      */
     updateEmotionalState(userSentiment, threat) {
         // Emotional inertia: state changes gradually, not instantly
-        const inertia = 0.7; // 70% old state, 30% new input
+        const inertia = 0.6; // 60% old state, 40% new input (reduced from 0.7 for faster response)
         // Valence shifts toward user sentiment
         this.currentState.valence = this.currentState.valence * inertia + userSentiment * (1 - inertia);
         // Arousal increases with threats or strong emotions
@@ -204,6 +215,16 @@ class Amygdala {
             rel.emotionalHistory = rel.emotionalHistory.slice(-50);
         }
         this.relationships.set(context.senderId, rel);
+    }
+    /**
+     * Decay emotional state toward neutral (for heartbeat)
+     */
+    decayToward(target, amount) {
+        if (target === 'neutral') {
+            this.currentState.valence *= (1 - amount);
+            this.currentState.arousal = this.currentState.arousal * (1 - amount) + 0.3 * amount;
+            this.currentState.mood = this.deriveMood(this.currentState.valence, this.currentState.arousal);
+        }
     }
     /**
      * Persist emotional state and relationships to files

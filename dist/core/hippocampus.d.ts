@@ -56,6 +56,10 @@ export declare class Hippocampus {
      */
     private persist;
     /**
+     * Detect strong sentiment for memory importance
+     */
+    private detectStrongSentiment;
+    /**
      * Extract topic tags from text
      */
     private extractTags;

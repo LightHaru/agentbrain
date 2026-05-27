@@ -8,10 +8,11 @@
  * - message_sent: consolidate memory, track skills, process reward
  * - agent_end: session reflection + persist brain state
  *
- * Format matches agent-memory-graph plugin pattern.
+ * Self-contained: does not import from openclaw/plugin-sdk at compile time.
+ * OpenClaw gateway loads this file and calls .register(api).
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-const plugin_entry_1 = require("openclaw/plugin-sdk/plugin-entry");
+// Inline definePluginEntry — matches OpenClaw's expected export shape
+function definePluginEntry(def) { return def; }
 const node_path_1 = require("node:path");
 const node_os_1 = require("node:os");
 const thalamus_js_1 = require("../core/thalamus.js");
@@ -93,7 +94,7 @@ async function ensureInitialized(config) {
         return false;
     }
 }
-exports.default = (0, plugin_entry_1.definePluginEntry)({
+const _plugin = definePluginEntry({
     id: 'agentbrain',
     name: 'AgentBrain',
     description: 'Brain-inspired cognitive architecture. Self-evolving personality, memory, emotions, skill learning.',
@@ -166,6 +167,12 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 : event.content?.text || event.content?.body || '';
             if (!text || text.length < 3)
                 return;
+            // Detect heartbeat polls
+            if (/heartbeat poll|HEARTBEAT_OK|heartbeat/i.test(text)) {
+                heartbeatCount++;
+                amygdala.decayToward('neutral', 0.02);
+                return; // Don't process heartbeat as regular message
+            }
             const msgContext = {
                 message: text,
                 senderId: event.senderId || 'unknown',
@@ -192,6 +199,8 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                     if (skill) {
                         cerebellum.detectPattern(skill, msgContext.timestamp);
                     }
+                    // Also detect relationship patterns
+                    cerebellum.detectRelationshipPattern(text, msgContext.timestamp);
                 }
                 interactionCount++;
             }
@@ -227,11 +236,16 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 });
                 // Detect sentiment for reward
                 const sentiment = amygdala.detectSentiment(lastMessageContext.message);
+                // Check if response contains tool error indicators
+                const toolErrorPatterns = /timeout|rate.?limit|api.?error|quota|expired|timed out/i;
+                const isToolFailure = toolErrorPatterns.test(responseText);
+                // Use neutral reward for tool failures instead of negative
+                const rewardSignal = isToolFailure ? 0 : sentiment;
                 // Cerebellum: record skill usage
                 if (config?.enableSkillTracking !== false) {
                     const skill = cerebellum.detectSkill(lastMessageContext.message);
                     if (skill) {
-                        cerebellum.recordSkillUsage(skill, sentiment >= 0);
+                        cerebellum.recordSkillUsage(skill, rewardSignal >= 0);
                     }
                 }
                 // Basal Ganglia: process reward signal
@@ -239,7 +253,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 basalGanglia.processReward({
                     timestamp: new Date().toISOString(),
                     taskType: skill || 'general',
-                    signal: sentiment,
+                    signal: rewardSignal,
                     source: 'implicit',
                     context: lastMessageContext.message.slice(0, 50),
                 });
@@ -251,7 +265,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                             taskDescription: lastMessageContext.message.slice(0, 100),
                             userMessage: lastMessageContext.message,
                             agentResponse: responseText,
-                            userSentiment: sentiment,
+                            userSentiment: rewardSignal,
                             emotionalState: amygdala.getState(),
                         });
                     }
@@ -288,11 +302,14 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 console.warn('[AgentBrain] agent_end persist failed:', err.message);
             }
         }, { priority: 20 });
+        // NOTE: OpenClaw has no 'heartbeat' typed hook.
+        // Heartbeat detection is handled inside message_received via pattern match.
         // ─── TOOLS ───
-        api.registerTool('agentbrain_status', {
+        api.registerTool({
+            name: 'agentbrain_status',
             description: 'Get AgentBrain status: modules, stats, emotional state, personality',
             parameters: {},
-            handler: async (_params, ctx) => {
+            execute: async (_id, _params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -319,10 +336,11 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 };
             },
         });
-        api.registerTool('agentbrain_personality', {
+        api.registerTool({
+            name: 'agentbrain_personality',
             description: 'Get or view current personality traits (0-100 scale)',
             parameters: {},
-            handler: async (_params, ctx) => {
+            execute: async (_id, _params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -332,7 +350,8 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 };
             },
         });
-        api.registerTool('agentbrain_emotions', {
+        api.registerTool({
+            name: 'agentbrain_emotions',
             description: 'Get current emotional state and relationship data',
             parameters: {
                 type: 'object',
@@ -340,7 +359,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                     userId: { type: 'string', description: 'User ID to get relationship for' },
                 },
             },
-            handler: async (params, ctx) => {
+            execute: async (_id, params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -351,10 +370,11 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 return result;
             },
         });
-        api.registerTool('agentbrain_skills', {
+        api.registerTool({
+            name: 'agentbrain_skills',
             description: 'Get tracked skills and detected habits',
             parameters: {},
-            handler: async (_params, ctx) => {
+            execute: async (_id, _params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -365,7 +385,8 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 };
             },
         });
-        api.registerTool('agentbrain_memories', {
+        api.registerTool({
+            name: 'agentbrain_memories',
             description: 'Query brain memories by topic or keyword',
             parameters: {
                 type: 'object',
@@ -375,7 +396,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 },
                 required: ['query'],
             },
-            handler: async (params, ctx) => {
+            execute: async (_id, params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -383,7 +404,8 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 return { memories, stats: hippocampus.getStats() };
             },
         });
-        api.registerTool('agentbrain_reflect', {
+        api.registerTool({
+            name: 'agentbrain_reflect',
             description: 'Trigger a manual self-reflection on recent interactions',
             parameters: {
                 type: 'object',
@@ -392,7 +414,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                     outcome: { type: 'string', enum: ['success', 'partial', 'failure'] },
                 },
             },
-            handler: async (params, ctx) => {
+            execute: async (_id, params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -407,17 +429,19 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 return reflection;
             },
         });
-        api.registerTool('agentbrain_template_list', {
+        api.registerTool({
+            name: 'agentbrain_template_list',
             description: 'List available brain templates',
             parameters: {},
-            handler: async (_params, ctx) => {
+            execute: async (_id, _params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
                 return { templates: await templateManager.listTemplates() };
             },
         });
-        api.registerTool('agentbrain_template_apply', {
+        api.registerTool({
+            name: 'agentbrain_template_apply',
             description: 'Apply a brain template (resets personality/emotions/skills to template baseline)',
             parameters: {
                 type: 'object',
@@ -426,7 +450,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 },
                 required: ['templateId'],
             },
-            handler: async (params, ctx) => {
+            execute: async (_id, params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -437,7 +461,8 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 return { success: true, applied: template.name };
             },
         });
-        api.registerTool('agentbrain_snapshot', {
+        api.registerTool({
+            name: 'agentbrain_snapshot',
             description: 'Save or list brain state snapshots (backup/restore)',
             parameters: {
                 type: 'object',
@@ -447,7 +472,7 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
                 },
                 required: ['action'],
             },
-            handler: async (params, ctx) => {
+            execute: async (_id, params, ctx) => {
                 if (!await ensureInitialized(ctx?.pluginConfig)) {
                     return { error: 'AgentBrain not initialized' };
                 }
@@ -463,4 +488,5 @@ exports.default = (0, plugin_entry_1.definePluginEntry)({
         });
     },
 });
+module.exports = _plugin;
 //# sourceMappingURL=entry.js.map
