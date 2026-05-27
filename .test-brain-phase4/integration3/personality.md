@@ -1,6 +1,6 @@
 # Personality State
 > Auto-managed by AgentBrain Anterior Cingulate
-> Last updated: 2026-05-26T05:42:53.843Z
+> Last updated: 2026-05-27T05:31:03.931Z
 > Total reflections: 1
 
 ## Core Traits (0-100)
@@ -12,15 +12,15 @@
 - Directness: 50.0
 - Protectiveness: 50.0
 - Independence: 50.0
-- Depth: 0.0
-- Interactions: 0.0
+- Depth: 10.0
+- Interactions: 1.0
 
 ## Performance
 - Success rate: 0.0%
 - Avg satisfaction: 0.00
 - Trend: improving
 - Strengths: warmth: 50, assertiveness: 50, curiosity: 50
-- Weaknesses: depth: 0, interactions: 0, warmth: 50
+- Weaknesses: interactions: 1, depth: 10, warmth: 50
 
 ## Evolution Log (last 5 adjustments)
 (No adjustments yet)

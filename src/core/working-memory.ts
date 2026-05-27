@@ -211,16 +211,15 @@ export class WorkingMemory {
    * Apply decay to all items based on time elapsed
    */
   decay(minutesElapsed: number): void {
-    const now = Date.now();
     const itemsToRemove: string[] = [];
     
     for (const [id, item] of this.items.entries()) {
-      // Calculate time since last refresh
-      const timeSinceRefresh = (now - item.lastRefreshed) / (1000 * 60); // minutes
+      // Apply decay based on minutes elapsed parameter
+      const decayAmount = item.decayRate * minutesElapsed * this.DECAY_RATE;
+      item.activation = Math.max(0, item.activation - decayAmount);
       
-      // Apply decay
-      const decay = item.decayRate * timeSinceRefresh * this.DECAY_RATE;
-      item.activation = Math.max(0, item.activation - decay);
+      // Update lastRefreshed to simulate time passing
+      item.lastRefreshed = item.lastRefreshed - (minutesElapsed * 60 * 1000);
       
       // Mark for removal if activation too low
       if (item.activation < this.MIN_ACTIVATION) {
