@@ -22,6 +22,10 @@ import { AnteriorCingulate } from '../core/cingulate.js';
 import { Cerebellum } from '../core/cerebellum.js';
 import { BasalGanglia } from '../core/basal-ganglia.js';
 import { PrefrontalCortex } from '../core/prefrontal.js';
+import { TemporalLobe } from '../core/temporal.js';
+import { ParietalLobe } from '../core/parietal.js';
+import { Insula } from '../core/insula.js';
+import { Metacognition } from '../core/metacognition.js';
 import { BrainFileManager } from '../storage/md-writer.js';
 import { PriorityEnforcer } from '../integration/priority-enforcer.js';
 import { ContextInjector, InjectionContext } from '../integration/context-injector.js';
@@ -39,6 +43,10 @@ let cingulate: AnteriorCingulate;
 let cerebellum: Cerebellum;
 let basalGanglia: BasalGanglia;
 let prefrontal: PrefrontalCortex;
+let temporal: TemporalLobe;
+let parietal: ParietalLobe;
+let insula: Insula;
+let metacognition: Metacognition;
 let fileManager: BrainFileManager;
 let enforcer: PriorityEnforcer;
 let injector: ContextInjector;
@@ -92,13 +100,19 @@ async function ensureInitialized(config: any): Promise<boolean> {
     prefrontal = new PrefrontalCortex(brainConfig, fileManager);
     await prefrontal.initialize();
 
+    // Phase 1 modules (v0.2.0)
+    temporal = new TemporalLobe(brainConfig);
+    parietal = new ParietalLobe(brainConfig);
+    insula = new Insula(brainConfig);
+    metacognition = new Metacognition(brainConfig);
+
     enforcer = new PriorityEnforcer();
     injector = new ContextInjector(enforcer);
     templateManager = new TemplateManager(brainDir, fileManager);
     brainSync = new BrainSync(brainDir);
 
     initialized = true;
-    console.log('[AgentBrain] Plugin initialized — all 7 modules online');
+    console.log('[AgentBrain] Plugin initialized — 7 core + 4 Phase 1 modules online');
     return true;
   } catch (err: any) {
     console.warn('[AgentBrain] Initialization failed:', err.message);
@@ -376,6 +390,11 @@ const _plugin = definePluginEntry({
             cerebellum: true,
             basalGanglia: true,
             prefrontal: true,
+            // Phase 1 modules (v0.2.0)
+            temporal: true,
+            parietal: true,
+            insula: true,
+            metacognition: true,
           },
           emotionalState: amygdala.getState(),
           personality: cingulate.getPersonality(),
@@ -384,6 +403,11 @@ const _plugin = definePluginEntry({
           topSkills: cerebellum.getTopSkills(5),
           activeHabits: cerebellum.getActiveHabits(),
           rewardTrend: basalGanglia.getRecentTrend(),
+          // Phase 1 module states
+          temporalState: temporal.getState(),
+          parietalState: parietal.getState(),
+          insulaState: insula.getState(),
+          metacognitionState: metacognition.getState(),
         };
       },
     });
