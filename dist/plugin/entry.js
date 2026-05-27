@@ -26,6 +26,11 @@ const temporal_js_1 = require("../core/temporal.js");
 const parietal_js_1 = require("../core/parietal.js");
 const insula_js_1 = require("../core/insula.js");
 const metacognition_js_1 = require("../core/metacognition.js");
+const hypothalamus_js_1 = require("../core/hypothalamus.js");
+const brainstem_js_1 = require("../core/brainstem.js");
+const corpus_callosum_js_1 = require("../core/corpus-callosum.js");
+const global_workspace_js_1 = require("../core/global-workspace.js");
+const theory_of_mind_js_1 = require("../core/theory-of-mind.js");
 const md_writer_js_1 = require("../storage/md-writer.js");
 const priority_enforcer_js_1 = require("../integration/priority-enforcer.js");
 const context_injector_js_1 = require("../integration/context-injector.js");
@@ -45,6 +50,11 @@ let temporal;
 let parietal;
 let insula;
 let metacognition;
+let hypothalamus;
+let brainstem;
+let corpusCallosum;
+let globalWorkspace;
+let theoryOfMind;
 let fileManager;
 let enforcer;
 let injector;
@@ -94,12 +104,18 @@ async function ensureInitialized(config) {
         parietal = new parietal_js_1.ParietalLobe(brainConfig);
         insula = new insula_js_1.Insula(brainConfig);
         metacognition = new metacognition_js_1.Metacognition(brainConfig);
+        // Phase 2 modules (v0.3.0)
+        hypothalamus = new hypothalamus_js_1.Hypothalamus(brainConfig);
+        brainstem = new brainstem_js_1.Brainstem(brainConfig);
+        corpusCallosum = new corpus_callosum_js_1.CorpusCallosum(brainConfig);
+        globalWorkspace = new global_workspace_js_1.GlobalWorkspace(brainConfig);
+        theoryOfMind = new theory_of_mind_js_1.TheoryOfMind(brainConfig);
         enforcer = new priority_enforcer_js_1.PriorityEnforcer();
         injector = new context_injector_js_1.ContextInjector(enforcer);
         templateManager = new template_manager_js_1.TemplateManager(brainDir, fileManager);
         brainSync = new brain_sync_js_1.BrainSync(brainDir);
         initialized = true;
-        console.log('[AgentBrain] Plugin initialized — 7 core + 4 Phase 1 modules online');
+        console.log('[AgentBrain] Plugin initialized — 7 core + 4 Phase 1 + 5 Phase 2 modules online');
         return true;
     }
     catch (err) {
@@ -343,6 +359,12 @@ const _plugin = definePluginEntry({
                         parietal: true,
                         insula: true,
                         metacognition: true,
+                        // Phase 2 modules (v0.3.0)
+                        hypothalamus: true,
+                        brainstem: true,
+                        corpusCallosum: true,
+                        globalWorkspace: true,
+                        theoryOfMind: true,
                     },
                     emotionalState: amygdala.getState(),
                     personality: cingulate.getPersonality(),
@@ -356,6 +378,12 @@ const _plugin = definePluginEntry({
                     parietalState: parietal.getState(),
                     insulaState: insula.getState(),
                     metacognitionState: metacognition.getState(),
+                    // Phase 2 module states
+                    hypothalamusState: hypothalamus.getState(),
+                    brainstemState: brainstem.getState(),
+                    corpusCallosumState: corpusCallosum.getState(),
+                    globalWorkspaceState: globalWorkspace.getState(),
+                    theoryOfMindState: theoryOfMind.getState(),
                 };
             },
         });
