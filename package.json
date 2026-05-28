@@ -36,12 +36,13 @@
     "openclaw",
     "plugin"
   ],
-  "author": "S\u1ebfp & Aira",
+  "author": "Sếp & Aira",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "better-sqlite3": "^11.0.0",

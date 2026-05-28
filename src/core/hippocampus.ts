@@ -55,7 +55,7 @@ export class Hippocampus {
     this.memories = await this.fileManager.loadMemories();
     await this.vectorMemory.initialize();
     // Index any unindexed memories
-    const indexed = this.vectorMemory.indexAll(this.memories);
+    const indexed = await this.vectorMemory.indexAll(this.memories);
     console.log(`[Hippocampus] Loaded ${this.memories.length} memories, indexed ${indexed} new vectors`);
   }
 
@@ -64,7 +64,7 @@ export class Hippocampus {
    */
   async recall(query: string, topic: string): Promise<Memory[]> {
     // Primary: vector-based semantic recall
-    const vectorResults = this.vectorMemory.recall(query, this.memories, topic);
+    const vectorResults = await this.vectorMemory.recall(query, this.memories, topic);
 
     if (vectorResults.length > 0) {
       // Update access metadata only for high-scoring results
@@ -155,7 +155,7 @@ export class Hippocampus {
 
       this.memories.push(memory);
       // Index new memory into vector store
-      this.vectorMemory.indexMemory(memory);
+      await this.vectorMemory.indexMemory(memory);
     }
 
     // Persist if buffer is getting large

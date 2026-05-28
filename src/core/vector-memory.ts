@@ -16,6 +16,7 @@ import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { Memory } from '../index.js';
+import { getEmbeddingEngine } from './embedding-engine.js';
 
 // ============================================================================
 // Types
@@ -151,6 +152,7 @@ export class VectorMemory {
   private openclawDb: Database.Database | null = null;
   private embedder: SimpleEmbedder;
   private memoryEmbeddings: Map<string, Float32Array> = new Map();
+  private embeddingEngine = getEmbeddingEngine();
 
   constructor(config: Partial<VectorMemoryConfig> = {}) {
     this.config = {
@@ -211,14 +213,20 @@ export class VectorMemory {
 
   /**
    * Semantic recall: find memories similar to query
+   * 3-tier fallback: EmbeddingEngine → OpenClaw cache → TF-IDF
    */
-  recall(query: string, memories: Memory[], topic?: string): RecallResult[] {
-    // Try to get query embedding from OpenClaw cache first
-    let queryVec = this.getOpenClawEmbedding(query);
+  async recall(query: string, memories: Memory[], topic?: string): Promise<RecallResult[]> {
+    // Tier 1: Try EmbeddingEngine (Transformers.js)
+    let queryVec = await this.embeddingEngine.embed(query);
     let method: 'vector' | 'keyword' | 'hybrid' = 'vector';
 
     if (!queryVec) {
-      // Fallback to TF-IDF
+      // Tier 2: Try OpenClaw cache
+      queryVec = this.getOpenClawEmbedding(query);
+    }
+
+    if (!queryVec) {
+      // Tier 3: Fallback to TF-IDF
       if (!this.embedder.hasVocabulary()) {
         // Build vocabulary from all memories
         this.embedder.buildVocabulary(memories.map(m => m.content));
@@ -234,11 +242,16 @@ export class VectorMemory {
       let memVec = this.memoryEmbeddings.get(memory.id);
 
       if (!memVec) {
-        // Try OpenClaw cache
-        memVec = this.getOpenClawEmbedding(memory.content) || undefined;
+        // Tier 1: Try EmbeddingEngine
+        memVec = await this.embeddingEngine.embed(memory.content) || undefined;
 
         if (!memVec) {
-          // TF-IDF fallback
+          // Tier 2: Try OpenClaw cache
+          memVec = this.getOpenClawEmbedding(memory.content) || undefined;
+        }
+
+        if (!memVec) {
+          // Tier 3: TF-IDF fallback
           memVec = this.embedder.embed(memory.content);
           method = 'hybrid';
         }
@@ -272,14 +285,21 @@ export class VectorMemory {
 
   /**
    * Index a new memory (compute and store embedding)
+   * 3-tier fallback: EmbeddingEngine → OpenClaw cache → TF-IDF
    */
-  indexMemory(memory: Memory): void {
-    // Try OpenClaw embedding first
-    let vec = this.getOpenClawEmbedding(memory.content);
-    let source = 'openclaw';
+  async indexMemory(memory: Memory): Promise<void> {
+    // Tier 1: Try EmbeddingEngine
+    let vec = await this.embeddingEngine.embed(memory.content);
+    let source = 'transformers';
 
     if (!vec) {
-      // TF-IDF fallback
+      // Tier 2: Try OpenClaw cache
+      vec = this.getOpenClawEmbedding(memory.content);
+      source = 'openclaw';
+    }
+
+    if (!vec) {
+      // Tier 3: TF-IDF fallback
       if (this.embedder.hasVocabulary()) {
         vec = this.embedder.embed(memory.content);
         source = 'tfidf';
@@ -311,17 +331,59 @@ export class VectorMemory {
   /**
    * Batch index all memories (call during heartbeat)
    */
-  indexAll(memories: Memory[]): number {
-    // Rebuild TF-IDF vocabulary
+  async indexAll(memories: Memory[]): Promise<number> {
+    // Rebuild TF-IDF vocabulary for fallback
     this.embedder.buildVocabulary(memories.map(m => m.content));
 
+    // Filter memories that need indexing
+    const toIndex = memories.filter(m => !this.memoryEmbeddings.has(m.id));
+    
+    if (toIndex.length === 0) return 0;
+
+    // Try batch embedding with EmbeddingEngine first
+    const embeddings = await this.embeddingEngine.embedBatch(toIndex.map(m => m.content));
+    
     let indexed = 0;
-    for (const memory of memories) {
-      if (!this.memoryEmbeddings.has(memory.id)) {
-        this.indexMemory(memory);
+    for (let i = 0; i < toIndex.length; i++) {
+      const memory = toIndex[i];
+      let vec = embeddings[i];
+      let source = 'transformers';
+
+      if (!vec) {
+        // Tier 2: Try OpenClaw cache
+        vec = this.getOpenClawEmbedding(memory.content);
+        source = 'openclaw';
+      }
+
+      if (!vec) {
+        // Tier 3: TF-IDF fallback
+        vec = this.embedder.embed(memory.content);
+        source = 'tfidf';
+      }
+
+      if (vec) {
+        this.memoryEmbeddings.set(memory.id, vec);
+
+        // Persist to DB
+        if (this.db) {
+          const stmt = this.db.prepare(`
+            INSERT OR REPLACE INTO memory_vectors (id, content, type, embedding, embedding_source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `);
+          stmt.run(
+            memory.id,
+            memory.content,
+            memory.type,
+            Buffer.from(vec.buffer),
+            source,
+            memory.timestamp,
+            new Date().toISOString()
+          );
+        }
         indexed++;
       }
     }
+    
     return indexed;
   }
 
@@ -338,11 +400,12 @@ export class VectorMemory {
   /**
    * Get stats
    */
-  getStats(): { indexed: number; openclawCacheHits: number; dims: number } {
+  getStats(): { indexed: number; openclawCacheHits: number; dims: number; embeddingEngine: any } {
     return {
       indexed: this.memoryEmbeddings.size,
       openclawCacheHits: this.openclawDb ? 1 : 0,
       dims: this.config.dims,
+      embeddingEngine: this.embeddingEngine.getModelInfo(),
     };
   }
 
