@@ -40,6 +40,8 @@ export interface FactRow {
   source: string;
   timestamp: string;
   superseded_by: string | null;
+  valid_from: string;
+  valid_until: string | null;
 }
 
 export interface EntityRow {
@@ -179,11 +181,14 @@ export class BrainDatabase {
         confidence REAL NOT NULL DEFAULT 0.7,
         source TEXT NOT NULL DEFAULT 'inferred',
         timestamp TEXT NOT NULL,
-        superseded_by TEXT
+        superseded_by TEXT,
+        valid_from TEXT NOT NULL DEFAULT '',
+        valid_until TEXT DEFAULT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject);
       CREATE INDEX IF NOT EXISTS idx_facts_relation ON facts(relation);
       CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(superseded_by) WHERE superseded_by IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_facts_temporal ON facts(valid_from, valid_until);
 
       CREATE TABLE IF NOT EXISTS entities (
         id TEXT PRIMARY KEY,
@@ -283,6 +288,28 @@ export class BrainDatabase {
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      -- FTS5 virtual table for BM25 search
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        content,
+        tags,
+        content='memories',
+        content_rowid='rowid'
+      );
+
+      -- Triggers to keep FTS5 in sync
+      CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, content, tags) VALUES (new.rowid, new.content, new.tags);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memories BEGIN
+        DELETE FROM memories_fts WHERE rowid = old.rowid;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE ON memories BEGIN
+        DELETE FROM memories_fts WHERE rowid = old.rowid;
+        INSERT INTO memories_fts(rowid, content, tags) VALUES (new.rowid, new.content, new.tags);
+      END;
     `);
 
     console.log('[BrainDB] Schema initialized');
@@ -325,6 +352,28 @@ export class BrainDatabase {
     `).all(pattern, limit) as MemoryRow[];
   }
 
+  /**
+   * BM25 full-text search using FTS5
+   * Returns memories ranked by BM25 relevance score
+   */
+  bm25Search(query: string, limit: number = 10): Array<MemoryRow & { bm25_score: number }> {
+    try {
+      const results = this.db.prepare(`
+        SELECT m.*, bm25(memories_fts) as bm25_score
+        FROM memories_fts
+        JOIN memories m ON memories_fts.rowid = m.rowid
+        WHERE memories_fts MATCH ?
+        ORDER BY bm25_score
+        LIMIT ?
+      `).all(query, limit) as Array<MemoryRow & { bm25_score: number }>;
+      return results;
+    } catch (e: any) {
+      // Fallback to LIKE search if FTS5 query fails
+      console.warn('[BrainDB] FTS5 query failed, falling back to LIKE:', e.message);
+      return this.searchMemories(query, limit).map(m => ({ ...m, bm25_score: 0 }));
+    }
+  }
+
   updateMemoryAccess(id: string): void {
     this.db.prepare(`
       UPDATE memories SET access_count = access_count + 1, last_accessed = ? WHERE id = ?
@@ -356,11 +405,12 @@ export class BrainDatabase {
   // Facts
   // ==========================================================================
 
-  insertFact(fact: { id: string; subject: string; relation: string; object: string; confidence: number; source: string; timestamp: string }): void {
+  insertFact(fact: { id: string; subject: string; relation: string; object: string; confidence: number; source: string; timestamp: string; validFrom?: string }): void {
+    const validFrom = fact.validFrom || fact.timestamp;
     this.db.prepare(`
-      INSERT OR REPLACE INTO facts (id, subject, relation, object, confidence, source, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(fact.id, fact.subject, fact.relation, fact.object, fact.confidence, fact.source, fact.timestamp);
+      INSERT OR REPLACE INTO facts (id, subject, relation, object, confidence, source, timestamp, valid_from)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(fact.id, fact.subject, fact.relation, fact.object, fact.confidence, fact.source, fact.timestamp, validFrom);
   }
 
   getActiveFacts(subject?: string): FactRow[] {
@@ -372,8 +422,47 @@ export class BrainDatabase {
     return this.db.prepare('SELECT * FROM facts WHERE superseded_by IS NULL ORDER BY timestamp DESC').all() as FactRow[];
   }
 
-  supersedeFact(oldFactId: string, newFactId: string): void {
-    this.db.prepare('UPDATE facts SET superseded_by = ? WHERE id = ?').run(newFactId, oldFactId);
+  /**
+   * Get facts valid at a specific point in time
+   */
+  getFactsAt(timestamp: string, subject?: string): FactRow[] {
+    if (subject) {
+      return this.db.prepare(`
+        SELECT * FROM facts 
+        WHERE (valid_from <= ? OR valid_from = '') 
+          AND (valid_until IS NULL OR valid_until > ?)
+          AND (subject LIKE ? OR object LIKE ?)
+        ORDER BY timestamp DESC
+      `).all(timestamp, timestamp, `%${subject}%`, `%${subject}%`) as FactRow[];
+    }
+    return this.db.prepare(`
+      SELECT * FROM facts 
+      WHERE (valid_from <= ? OR valid_from = '') 
+        AND (valid_until IS NULL OR valid_until > ?)
+      ORDER BY timestamp DESC
+    `).all(timestamp, timestamp) as FactRow[];
+  }
+
+  /**
+   * Get currently valid facts (valid_until IS NULL)
+   */
+  getCurrentFacts(subject?: string): FactRow[] {
+    if (subject) {
+      return this.db.prepare(`
+        SELECT * FROM facts 
+        WHERE valid_until IS NULL 
+          AND (subject LIKE ? OR object LIKE ?)
+        ORDER BY timestamp DESC
+      `).all(`%${subject}%`, `%${subject}%`) as FactRow[];
+    }
+    return this.db.prepare(`
+      SELECT * FROM facts WHERE valid_until IS NULL ORDER BY timestamp DESC
+    `).all() as FactRow[];
+  }
+
+  supersedeFact(oldFactId: string, newFactId: string, timestamp?: string): void {
+    const now = timestamp || new Date().toISOString();
+    this.db.prepare('UPDATE facts SET superseded_by = ?, valid_until = ? WHERE id = ?').run(newFactId, now, oldFactId);
   }
 
   // ==========================================================================

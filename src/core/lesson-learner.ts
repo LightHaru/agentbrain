@@ -67,6 +67,7 @@ export class LessonLearner {
 
   /**
    * Analyze a conversation turn for correction signals
+   * Now includes context-aware teasing detection
    */
   analyze(params: {
     userMessage: string;
@@ -74,8 +75,10 @@ export class LessonLearner {
     previousAgentResponse?: string;
     senderName: string;
     timestamp: string;
+    senderTrust?: number;
+    activeHabits?: Array<{ pattern: string; confidence: number }>;
   }): Lesson | null {
-    const { userMessage, agentResponse, previousAgentResponse, senderName, timestamp } = params;
+    const { userMessage, agentResponse, previousAgentResponse, senderName, timestamp, senderTrust, activeHabits } = params;
 
     // Check for correction signals
     let strongestSignal: CorrectionSignal | null = null;
@@ -89,6 +92,18 @@ export class LessonLearner {
     }
 
     if (!strongestSignal || maxSeverity < 0.5) return null;
+
+    // Context-aware teasing detection
+    // If sender has high trust AND nickname-usage habit is active, reduce severity for "gà/ngu/dở" signals
+    const hasNicknameHabit = activeHabits?.some(h => h.pattern === 'nickname-usage' && h.confidence > 0.4);
+    const isHighTrust = (senderTrust || 0) > 50;
+    const isTeasingSignal = /gà|ngu|dở/i.test(userMessage);
+
+    if (isTeasingSignal && isHighTrust && hasNicknameHabit) {
+      // This is likely affectionate teasing, not real correction
+      maxSeverity = Math.max(0, maxSeverity - 0.4);
+      if (maxSeverity < 0.5) return null; // Don't create lesson for teasing
+    }
 
     // Extract what went wrong and what's right
     const extraction = this.extractLesson(userMessage, previousAgentResponse || '', strongestSignal);

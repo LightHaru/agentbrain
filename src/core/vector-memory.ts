@@ -17,6 +17,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { Memory } from '../index.js';
 import { getEmbeddingEngine } from './embedding-engine.js';
+import { EntityMatcher, Entity } from './entity-matcher.js';
+import type { BrainDatabase } from '../storage/brain-db.js';
 
 // ============================================================================
 // Types
@@ -153,8 +155,11 @@ export class VectorMemory {
   private embedder: SimpleEmbedder;
   private memoryEmbeddings: Map<string, Float32Array> = new Map();
   private embeddingEngine = getEmbeddingEngine();
+  private entityMatcher = new EntityMatcher();
+  private entityCache: Map<string, Entity[]> = new Map();
+  private brainDb: BrainDatabase | null = null;
 
-  constructor(config: Partial<VectorMemoryConfig> = {}) {
+  constructor(config: Partial<VectorMemoryConfig> = {}, brainDb?: BrainDatabase) {
     this.config = {
       dbPath: config.dbPath || './brain/vector.db',
       openclawDbPath: config.openclawDbPath || join(
@@ -165,6 +170,7 @@ export class VectorMemory {
       minSimilarity: config.minSimilarity || 0.3,
     };
     this.embedder = new SimpleEmbedder(this.config.dims);
+    this.brainDb = brainDb || null;
   }
 
   /**
@@ -212,10 +218,18 @@ export class VectorMemory {
   }
 
   /**
-   * Semantic recall: find memories similar to query
-   * 3-tier fallback: EmbeddingEngine → OpenClaw cache → TF-IDF
+   * Multi-signal recall: combines embedding similarity, BM25, and entity matching
+   * Score = 0.5 * embedding_similarity + 0.3 * bm25_score + 0.2 * entity_match_score
    */
   async recall(query: string, memories: Memory[], topic?: string): Promise<RecallResult[]> {
+    // Extract entities from query
+    const queryEntities = this.getEntities(query);
+
+    // Get BM25 scores if brainDb is available
+    const bm25Results = this.brainDb ? this.brainDb.bm25Search(query, memories.length) : [];
+    const bm25Map = new Map(bm25Results.map(r => [r.id, Math.abs(r.bm25_score)]));
+    const maxBm25 = Math.max(...Array.from(bm25Map.values()), 1);
+
     // Tier 1: Try EmbeddingEngine (Transformers.js)
     let queryVec = await this.embeddingEngine.embed(query);
     let method: 'vector' | 'keyword' | 'hybrid' = 'vector';
@@ -235,10 +249,11 @@ export class VectorMemory {
       method = 'hybrid'; // TF-IDF is less accurate
     }
 
-    // Score all memories
+    // Score all memories with multi-signal approach
     const results: RecallResult[] = [];
 
     for (const memory of memories) {
+      // Signal 1: Embedding similarity
       let memVec = this.memoryEmbeddings.get(memory.id);
 
       if (!memVec) {
@@ -262,19 +277,35 @@ export class VectorMemory {
         }
       }
 
+      let embeddingSimilarity = 0;
       if (memVec && queryVec) {
-        const similarity = this.cosineSimilarity(queryVec, memVec);
+        embeddingSimilarity = this.cosineSimilarity(queryVec, memVec);
+      }
 
-        // Boost by confidence and recency
-        const recencyBoost = Math.max(0, 0.05 - this.daysSince(memory.lastAccessed) * 0.005);
-        const confidenceBoost = memory.confidence * 0.1;
-        const topicBoost = (topic && memory.tags.includes(topic)) ? 0.15 : 0;
+      // Signal 2: BM25 score (normalized to 0-1)
+      const bm25Raw = bm25Map.get(memory.id) || 0;
+      const bm25Normalized = maxBm25 > 0 ? bm25Raw / maxBm25 : 0;
 
-        const finalScore = similarity + recencyBoost + confidenceBoost + topicBoost;
+      // Signal 3: Entity matching
+      const memoryEntities = this.getEntities(memory.content);
+      const entityScore = this.entityMatcher.matchScore(queryEntities, memoryEntities);
 
-        if (finalScore >= this.config.minSimilarity) {
-          results.push({ memory, similarity: finalScore, method });
-        }
+      // Combine signals: 0.5 * embedding + 0.3 * bm25 + 0.2 * entity
+      const combinedScore = (
+        0.5 * embeddingSimilarity +
+        0.3 * bm25Normalized +
+        0.2 * entityScore
+      );
+
+      // Additional boosts
+      const recencyBoost = Math.max(0, 0.05 - this.daysSince(memory.lastAccessed) * 0.005);
+      const confidenceBoost = memory.confidence * 0.1;
+      const topicBoost = (topic && memory.tags.includes(topic)) ? 0.15 : 0;
+
+      const finalScore = combinedScore + recencyBoost + confidenceBoost + topicBoost;
+
+      if (finalScore >= this.config.minSimilarity) {
+        results.push({ memory, similarity: finalScore, method });
       }
     }
 
@@ -398,14 +429,36 @@ export class VectorMemory {
   }
 
   /**
+   * Get or compute entities for text (with caching)
+   */
+  private getEntities(text: string): Entity[] {
+    const cached = this.entityCache.get(text);
+    if (cached) return cached;
+
+    const entities = this.entityMatcher.extractEntities(text);
+    this.entityCache.set(text, entities);
+
+    // Limit cache size
+    if (this.entityCache.size > 1000) {
+      const firstKey = this.entityCache.keys().next().value;
+      if (firstKey !== undefined) {
+        this.entityCache.delete(firstKey);
+      }
+    }
+
+    return entities;
+  }
+
+  /**
    * Get stats
    */
-  getStats(): { indexed: number; openclawCacheHits: number; dims: number; embeddingEngine: any } {
+  getStats(): { indexed: number; openclawCacheHits: number; dims: number; embeddingEngine: any; entityCacheSize: number } {
     return {
       indexed: this.memoryEmbeddings.size,
       openclawCacheHits: this.openclawDb ? 1 : 0,
       dims: this.config.dims,
       embeddingEngine: this.embeddingEngine.getModelInfo(),
+      entityCacheSize: this.entityCache.size,
     };
   }
 

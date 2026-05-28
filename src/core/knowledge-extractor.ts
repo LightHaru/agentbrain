@@ -27,6 +27,8 @@ export interface Fact {
   source: 'user_stated' | 'agent_observed' | 'inferred';
   timestamp: string;
   supersededBy?: string; // If this fact was corrected
+  validFrom?: string; // When this fact became true
+  validUntil?: string; // When this fact stopped being true (null = still valid)
 }
 
 export interface Correction {
@@ -118,6 +120,27 @@ export class KnowledgeExtractor {
   }
 
   /**
+   * Query facts valid at a specific point in time
+   */
+  queryFactsAtTime(subject: string, timestamp: string): Fact[] {
+    const subjectLower = subject.toLowerCase();
+    return this.facts.filter(f => {
+      const matchesSubject = f.subject.toLowerCase().includes(subjectLower) ||
+                            f.object.toLowerCase().includes(subjectLower);
+      if (!matchesSubject) return false;
+
+      // Check temporal validity
+      const validFrom = (f as any).validFrom || f.timestamp;
+      const validUntil = (f as any).validUntil;
+
+      const isValidFrom = validFrom <= timestamp;
+      const isValidUntil = !validUntil || validUntil > timestamp;
+
+      return isValidFrom && isValidUntil;
+    });
+  }
+
+  /**
    * Get all known entities
    */
   getEntities(): Entity[] {
@@ -171,6 +194,8 @@ export class KnowledgeExtractor {
             confidence: partial.confidence || 0.7,
             source,
             timestamp: context.timestamp,
+            validFrom: context.timestamp,
+            validUntil: undefined,
           };
 
           // Check if this fact already exists
@@ -236,6 +261,7 @@ export class KnowledgeExtractor {
 
       if (conflicting) {
         conflicting.supersededBy = newFact.id;
+        conflicting.validUntil = newFact.timestamp; // Mark when old fact stopped being valid
         result.corrections.push({
           oldFact: conflicting,
           newFact,

@@ -12,6 +12,7 @@
 import { BrainConfig } from './config.js';
 import { Memory } from '../index.js';
 import { BrainFileManager } from '../storage/md-writer.js';
+import { SqlStorageAdapter } from '../storage/sql-adapter.js';
 import { VectorMemory } from './vector-memory.js';
 
 export interface ConversationTurn {
@@ -31,21 +32,25 @@ export interface MemoryCandidate {
 
 export class Hippocampus {
   private config: BrainConfig;
-  private fileManager: BrainFileManager;
+  private fileManager: BrainFileManager | SqlStorageAdapter;
   private shortTermBuffer: ConversationTurn[] = [];
   private memories: Memory[] = [];
   private heartbeatCount: number = 0;
   private vectorMemory: VectorMemory;
 
-  constructor(config: BrainConfig, fileManager: BrainFileManager) {
+  constructor(config: BrainConfig, fileManager: BrainFileManager | SqlStorageAdapter) {
     this.config = config;
     this.fileManager = fileManager;
+    
+    // Get BrainDatabase instance if using SqlStorageAdapter
+    const brainDb = fileManager instanceof SqlStorageAdapter ? fileManager.getDatabase() : undefined;
+    
     this.vectorMemory = new VectorMemory({
       dbPath: `${config.brainDir}/vector.db`,
       dims: 768,
       maxResults: config.maxRecallResults,
       minSimilarity: 0.25,
-    });
+    }, brainDb);
   }
 
   /**
