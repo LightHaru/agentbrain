@@ -31,6 +31,18 @@ export interface Fact {
   validUntil?: string; // When this fact stopped being true (null = still valid)
 }
 
+export interface ProceduralMemory {
+  id: string;
+  type: 'source_routing' | 'workflow' | 'shortcut';
+  trigger: string; // What triggers this memory (e.g., "PRL price")
+  action: string; // What to do (e.g., "Use DexScreener API")
+  confidence: number;
+  timesUsed: number;
+  successRate: number;
+  lastUsed: string;
+  created: string;
+}
+
 export interface Correction {
   oldFact: Fact;
   newFact: Fact;
@@ -42,6 +54,7 @@ export interface ExtractionResult {
   entities: Entity[];
   facts: Fact[];
   corrections: Correction[];
+  proceduralMemories: ProceduralMemory[];
   summary: string; // One-line summary of what was learned
 }
 
@@ -67,6 +80,7 @@ interface ExtractionContext {
 export class KnowledgeExtractor {
   private entities: Map<string, Entity> = new Map();
   private facts: Fact[] = [];
+  private proceduralMemories: ProceduralMemory[] = [];
   private patterns: Pattern[];
 
   constructor() {
@@ -81,6 +95,7 @@ export class KnowledgeExtractor {
       entities: [],
       facts: [],
       corrections: [],
+      proceduralMemories: [],
       summary: '',
     };
 
@@ -93,6 +108,9 @@ export class KnowledgeExtractor {
     // Detect corrections (new fact contradicts old fact)
     this.detectCorrections(result);
 
+    // Extract procedural memories (source routing)
+    this.extractProceduralMemories(message, response, context, result);
+
     // Generate summary
     result.summary = this.summarize(result);
 
@@ -103,6 +121,9 @@ export class KnowledgeExtractor {
 
     // Store facts
     this.facts.push(...result.facts);
+
+    // Store procedural memories
+    this.proceduralMemories.push(...result.proceduralMemories);
 
     return result;
   }
@@ -155,6 +176,32 @@ export class KnowledgeExtractor {
   }
 
   /**
+   * Get procedural memories (source routing, workflows)
+   */
+  getProceduralMemories(): ProceduralMemory[] {
+    return this.proceduralMemories;
+  }
+
+  /**
+   * Query procedural memory for a trigger
+   */
+  queryProcedural(trigger: string): ProceduralMemory | null {
+    const triggerLower = trigger.toLowerCase();
+    const matches = this.proceduralMemories.filter(pm =>
+      triggerLower.includes(pm.trigger.toLowerCase())
+    );
+    
+    if (matches.length === 0) return null;
+    
+    // Return highest confidence + success rate
+    return matches.sort((a, b) => {
+      const scoreA = a.confidence * a.successRate;
+      const scoreB = b.confidence * b.successRate;
+      return scoreB - scoreA;
+    })[0];
+  }
+
+  /**
    * Load persisted knowledge
    */
   loadFacts(facts: Fact[]): void {
@@ -165,6 +212,10 @@ export class KnowledgeExtractor {
     for (const e of entities) {
       this.entities.set(e.name.toLowerCase(), e);
     }
+  }
+
+  loadProceduralMemories(memories: ProceduralMemory[]): void {
+    this.proceduralMemories = memories;
   }
 
   // ==========================================================================
@@ -283,7 +334,74 @@ export class KnowledgeExtractor {
     if (result.corrections.length > 0) {
       parts.push(`${result.corrections.length} corrections`);
     }
+    if (result.proceduralMemories.length > 0) {
+      parts.push(`${result.proceduralMemories.length} procedures`);
+    }
     return parts.length > 0 ? `Extracted: ${parts.join(', ')}` : '';
+  }
+
+  private extractProceduralMemories(
+    message: string,
+    response: string,
+    context: ExtractionContext,
+    result: ExtractionResult
+  ): void {
+    // Detect source routing patterns
+    // Pattern: user asks about X, agent uses specific source Y successfully
+    
+    // PRL price → DexScreener
+    if (/prl|pearl.*price|giá.*prl/i.test(message) && /dexscreener/i.test(response)) {
+      const existing = this.proceduralMemories.find(pm => pm.trigger === 'PRL price');
+      if (!existing) {
+        result.proceduralMemories.push({
+          id: `proc-${Date.now().toString(36)}`,
+          type: 'source_routing',
+          trigger: 'PRL price',
+          action: 'Use DexScreener API: https://api.dexscreener.com/latest/dex/search?q=WPRL',
+          confidence: 0.8,
+          timesUsed: 1,
+          successRate: 1.0,
+          lastUsed: context.timestamp,
+          created: context.timestamp,
+        });
+      }
+    }
+    
+    // Token price → DexScreener (general)
+    if (/token.*price|price.*token|giá.*token/i.test(message) && /dexscreener/i.test(response)) {
+      const existing = this.proceduralMemories.find(pm => pm.trigger === 'token price');
+      if (!existing) {
+        result.proceduralMemories.push({
+          id: `proc-${Date.now().toString(36)}`,
+          type: 'source_routing',
+          trigger: 'token price',
+          action: 'Use DexScreener API for token price lookup',
+          confidence: 0.7,
+          timesUsed: 1,
+          successRate: 1.0,
+          lastUsed: context.timestamp,
+          created: context.timestamp,
+        });
+      }
+    }
+    
+    // GameFi news → TinGameFi
+    if (/gamefi.*news|tin.*gamefi|game.*news/i.test(message) && /tingamefi/i.test(response)) {
+      const existing = this.proceduralMemories.find(pm => pm.trigger === 'GameFi news');
+      if (!existing) {
+        result.proceduralMemories.push({
+          id: `proc-${Date.now().toString(36)}`,
+          type: 'source_routing',
+          trigger: 'GameFi news',
+          action: 'Check TinGameFi.com for latest GameFi news',
+          confidence: 0.9,
+          timesUsed: 1,
+          successRate: 1.0,
+          lastUsed: context.timestamp,
+          created: context.timestamp,
+        });
+      }
+    }
   }
 
   private buildPatterns(): Pattern[] {

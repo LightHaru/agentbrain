@@ -153,7 +153,7 @@ async function ensureInitialized(config: any): Promise<boolean> {
     });
 
     initialized = true;
-    console.log('[AgentBrain] Plugin v0.3.0 initialized — SQL storage + 5 new modules online');
+    console.log('[AgentBrain] Plugin v0.4.1 initialized — SQL storage + circadian + source routing online');
     return true;
   } catch (err: any) {
     console.warn('[AgentBrain] Initialization failed:', err.message);

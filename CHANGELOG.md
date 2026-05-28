@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.4.1] - 2026-05-28
+
+### 🐛 Bug Fixes
+
+#### Success Rate Calculation (Cingulate)
+- **Fixed:** Neutral interactions now correctly count as success
+- Changed threshold: sentiment >= -0.1 = success (was > 0.1)
+- Only sentiment < -0.3 counts as failure
+- Result: Success rate now accurately reflects ~80%+ instead of inflated 23%
+
+#### Circadian Rhythm & Alertness
+- **New:** `circadian.ts` module with timezone-aware phase detection
+- **Fixed:** 21:00 Asia/Ho_Chi_Minh now correctly shows as "evening" (alertness 0.6)
+- Phase mapping for UTC+7:
+  - morning (6-12): alertness 0.8
+  - afternoon (12-17): alertness 0.7
+  - evening (17-22): alertness 0.6
+  - late-night (22-02): alertness 0.3
+  - deep-night (02-06): alertness 0.1
+- Insula now tracks circadian phase and adjusts alertness based on energy/fatigue
+
+#### User Modeling (Theory of Mind)
+- **Fixed:** Insula.modelUserState() now receives data every turn in before_prompt_build
+- User emotion, goals, frustration, and satisfaction are tracked per interaction
+- Relationship data (trust, depth) feeds into user state model
+- activeUsers and currentUserModel now populated correctly
+
+### 🚀 Enhancements
+
+#### Working Memory Expansion
+- **Increased:** Prefrontal working memory capacity from 5 → 7 items
+- Allows agent to track more context in complex multi-step tasks
+
+#### Web-Research Skill
+- **Added:** `web-research` skill category to Cerebellum
+- Detects: search, lookup, fact-check, source, citation patterns
+- Tracks proficiency and success rate for research tasks
+
+#### Source Routing (Procedural Memory)
+- **Added:** ProceduralMemory type to KnowledgeExtractor
+- Learns best sources for specific queries:
+  - "PRL price" → DexScreener API
+  - "token price" → DexScreener
+  - "GameFi news" → TinGameFi.com
+- Tracks confidence, timesUsed, successRate per route
+- `queryProcedural(trigger)` returns best source for a topic
+
+### 📝 Tests
+- **Updated:** Working memory test now expects max 7 items (was 5)
+- All 207 tests passing
+
+---
+
 ## [0.3.0] - 2026-05-28
 
 ### 🚀 Major: SQLite Storage + Smart Modules

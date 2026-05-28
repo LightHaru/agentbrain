@@ -111,10 +111,10 @@ export class AnteriorCingulate {
 
     // Infer outcome from user sentiment
     // Neutral or mildly positive = success (user didn't complain = task was fine)
-    // Only count failure when clearly negative
-    const outcome = userSentiment > 0.1 ? 'success'
+    // Only count failure when clearly negative (< -0.3)
+    // Neutral range (-0.1 to 0.1) = success
+    const outcome = userSentiment >= -0.1 ? 'success'
       : userSentiment < -0.3 ? 'failure'
-      : userSentiment >= -0.1 ? 'success'  // neutral range = acceptable
       : 'partial';
 
     // Self-assess based on response quality signals

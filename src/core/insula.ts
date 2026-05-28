@@ -15,6 +15,7 @@
  */
 
 import { BrainConfig } from './config.js';
+import { getCircadianPhase, CircadianPhase } from './circadian.js';
 
 // ============================================================================
 // Types & Interfaces
@@ -38,6 +39,9 @@ export interface BodyMetrics {
   
   /** Time since last interaction */
   idleTime: number;
+  
+  /** Current circadian phase */
+  circadianPhase?: CircadianPhase;
 }
 
 export interface PerformanceAssessment {
@@ -153,6 +157,7 @@ export class Insula {
       lastRest: Date.now(),
       cognitiveLoad: 0,
       idleTime: 0,
+      circadianPhase: getCircadianPhase(new Date().getHours(), 'Asia/Ho_Chi_Minh'),
     };
     
     this.performanceHistory = [];
@@ -414,6 +419,8 @@ export class Insula {
     userSuccessRate: number;
     timeOfDay: number;
   }): UserMentalState {
+    // Update circadian phase
+    this.bodyState.circadianPhase = getCircadianPhase(context.timeOfDay, 'Asia/Ho_Chi_Minh');
     const msg = context.message.toLowerCase();
     
     // Detect emotion from message
@@ -646,6 +653,22 @@ export class Insula {
   // ==========================================================================
 
   /**
+   * Get circadian-adjusted alertness
+   */
+  getAlertness(): number {
+    if (!this.bodyState.circadianPhase) {
+      return 0.7; // default
+    }
+    
+    // Adjust alertness based on energy and fatigue
+    const baseAlertness = this.bodyState.circadianPhase.alertness;
+    const energyFactor = this.bodyState.energy / 100;
+    const fatigueFactor = 1 - (this.bodyState.fatigue / 100);
+    
+    return baseAlertness * energyFactor * fatigueFactor;
+  }
+
+  /**
    * Get current state for debugging
    */
   getState() {
@@ -656,6 +679,8 @@ export class Insula {
       needsRest: this.needsRest(),
       userFrustration: this.userState.frustrationLevel,
       userSatisfaction: this.userState.satisfactionLevel,
+      alertness: this.getAlertness(),
+      circadianPhase: this.bodyState.circadianPhase?.phase,
     };
   }
 }

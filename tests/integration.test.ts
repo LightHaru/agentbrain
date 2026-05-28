@@ -229,12 +229,12 @@ describe('PrefrontalCortex', () => {
     expect(plan2.priority).toBeGreaterThan(plan1.priority);
   });
 
-  it('should manage working memory (max 5 items)', () => {
-    for (let i = 0; i < 8; i++) {
+  it('should manage working memory (max 7 items)', () => {
+    for (let i = 0; i < 10; i++) {
       prefrontal.updateWorkingMemory(`Item ${i}`, 'test', Math.random());
     }
     const wm = prefrontal.getWorkingMemory();
-    expect(wm.length).toBeLessThanOrEqual(5);
+    expect(wm.length).toBeLessThanOrEqual(7);
   });
 
   it('should log decisions', () => {
