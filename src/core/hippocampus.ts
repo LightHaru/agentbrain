@@ -12,6 +12,7 @@
 import { BrainConfig } from './config.js';
 import { Memory } from '../index.js';
 import { BrainFileManager } from '../storage/md-writer.js';
+import { VectorMemory } from './vector-memory.js';
 
 export interface ConversationTurn {
   message: string;
@@ -34,10 +35,17 @@ export class Hippocampus {
   private shortTermBuffer: ConversationTurn[] = [];
   private memories: Memory[] = [];
   private heartbeatCount: number = 0;
+  private vectorMemory: VectorMemory;
 
   constructor(config: BrainConfig, fileManager: BrainFileManager) {
     this.config = config;
     this.fileManager = fileManager;
+    this.vectorMemory = new VectorMemory({
+      dbPath: `${config.brainDir}/vector.db`,
+      dims: 768,
+      maxResults: config.maxRecallResults,
+      minSimilarity: 0.25,
+    });
   }
 
   /**
@@ -45,52 +53,61 @@ export class Hippocampus {
    */
   async initialize(): Promise<void> {
     this.memories = await this.fileManager.loadMemories();
-    console.log(`[Hippocampus] Loaded ${this.memories.length} memories`);
+    await this.vectorMemory.initialize();
+    // Index any unindexed memories
+    const indexed = this.vectorMemory.indexAll(this.memories);
+    console.log(`[Hippocampus] Loaded ${this.memories.length} memories, indexed ${indexed} new vectors`);
   }
 
   /**
-   * Recall relevant memories for a given query/topic
+   * Recall relevant memories using vector similarity + keyword hybrid
    */
   async recall(query: string, topic: string): Promise<Memory[]> {
+    // Primary: vector-based semantic recall
+    const vectorResults = this.vectorMemory.recall(query, this.memories, topic);
+
+    if (vectorResults.length > 0) {
+      // Update access metadata only for high-scoring results
+      for (const result of vectorResults) {
+        if (result.similarity > 0.5) {
+          result.memory.accessCount++;
+          result.memory.lastAccessed = new Date().toISOString();
+        }
+      }
+      return vectorResults.map(r => r.memory);
+    }
+
+    // Fallback: keyword-based recall (for when vector search returns nothing)
+    return this.keywordRecall(query, topic);
+  }
+
+  /**
+   * Fallback keyword-based recall
+   */
+  private keywordRecall(query: string, topic: string): Memory[] {
     const queryLower = query.toLowerCase();
     const scored = this.memories.map(memory => {
       let score = memory.confidence;
 
-      // Keyword match boost
       const words = queryLower.split(/\s+/);
       const matchCount = words.filter(w => 
         memory.content.toLowerCase().includes(w) && w.length > 2
       ).length;
       score += matchCount * 0.1;
 
-      // Topic match boost
-      if (memory.tags.includes(topic)) {
-        score += 0.2;
-      }
+      if (memory.tags.includes(topic)) score += 0.2;
 
-      // Recency boost (memories accessed recently score higher)
       const daysSinceAccess = this.daysSince(memory.lastAccessed);
       score += Math.max(0, 0.1 - daysSinceAccess * 0.01);
-
-      // Frequency boost (often-accessed memories are more important)
-      score += Math.min(memory.accessCount * 0.02, 0.2);
 
       return { memory, score };
     });
 
-    // Sort by score, return top N
     scored.sort((a, b) => b.score - a.score);
-    const results = scored
+    return scored
       .slice(0, this.config.maxRecallResults)
-      .filter(s => s.score > 0.1)
-      .map(s => {
-        // Update access metadata
-        s.memory.accessCount++;
-        s.memory.lastAccessed = new Date().toISOString();
-        return s.memory;
-      });
-
-    return results;
+      .filter(s => s.score > 0.3)
+      .map(s => s.memory);
   }
 
   /**
@@ -102,21 +119,43 @@ export class Hippocampus {
     // Extract memory candidates from the turn
     const candidates = this.extractMemoryCandidates(turn);
 
+    // Dedup candidates: keep highest importance per unique content
+    const dedupMap = new Map<string, MemoryCandidate>();
     for (const candidate of candidates) {
-      if (candidate.importance >= 0.3) {
-        const memory: Memory = {
-          id: this.generateId(),
-          type: candidate.type,
-          content: candidate.content,
-          timestamp: turn.timestamp,
-          confidence: candidate.importance,
-          accessCount: 0,
-          lastAccessed: turn.timestamp,
-          tags: candidate.tags,
-        };
-
-        this.memories.push(memory);
+      if (candidate.importance < 0.3) continue;
+      const key = candidate.content.toLowerCase().trim();
+      const existing = dedupMap.get(key);
+      if (!existing || candidate.importance > existing.importance) {
+        // Merge tags from both if existing
+        if (existing) {
+          const mergedTags = [...new Set([...existing.tags, ...candidate.tags])];
+          candidate.tags = mergedTags;
+        }
+        dedupMap.set(key, candidate);
       }
+    }
+
+    for (const candidate of dedupMap.values()) {
+      // Check if similar memory already exists (prevent cross-session duplicates)
+      const isDuplicate = this.memories.some(m =>
+        m.content.toLowerCase().trim() === candidate.content.toLowerCase().trim()
+      );
+      if (isDuplicate) continue;
+
+      const memory: Memory = {
+        id: this.generateId(),
+        type: candidate.type,
+        content: candidate.content,
+        timestamp: turn.timestamp,
+        confidence: candidate.importance,
+        accessCount: 0,
+        lastAccessed: turn.timestamp,
+        tags: candidate.tags,
+      };
+
+      this.memories.push(memory);
+      // Index new memory into vector store
+      this.vectorMemory.indexMemory(memory);
     }
 
     // Persist if buffer is getting large
@@ -132,52 +171,67 @@ export class Hippocampus {
   private extractMemoryCandidates(turn: ConversationTurn): MemoryCandidate[] {
     const candidates: MemoryCandidate[] = [];
     const msg = turn.message;
+    const resp = turn.response;
 
     // Episodic: user made a decision or took an action
-    if (/chốt|quyết định|đã làm|xong|done|deployed|published|bought|sold/.test(msg)) {
+    if (/chốt|quyết định|đã làm|xong|done|deployed|published|bought|sold/i.test(msg)) {
       candidates.push({
-        content: `[${turn.senderName}] ${msg}`,
+        content: `[Decision] ${turn.senderName}: ${msg.slice(0, 200)}`,
         type: 'episodic',
-        tags: this.extractTags(msg),
+        tags: [...this.extractTags(msg), 'decision'],
         importance: 0.7,
       });
     }
 
-    // Episodic: emotional messages (teasing, praising, angry)
-    if (/gà mập|gà|kute|cute|giỏi|đỉnh|ngon|hay|tuyệt|khùng|ngu|dở|chán|tệ|ghét|yêu|thương/.test(msg)) {
+    // Episodic: emotional messages (teasing, praising, angry) — only strong ones
+    if (/giỏi|đỉnh|ngon|tuyệt|khùng|ngu|dở|chán|tệ|ghét|yêu|thương/i.test(msg)) {
       candidates.push({
-        content: `[${turn.senderName}] ${msg}`,
+        content: `[Emotion] ${turn.senderName}: ${msg.slice(0, 150)}`,
         type: 'episodic',
         tags: [...this.extractTags(msg), 'emotional'],
-        importance: 0.6,
-      });
-    }
-
-    // Semantic: user shared a fact or preference
-    if (/là|thích|ghét|muốn|cần|prefer|always|never|luôn|không bao giờ/.test(msg)) {
-      candidates.push({
-        content: `[${turn.senderName} preference] ${msg}`,
-        type: 'semantic',
-        tags: this.extractTags(msg),
-        importance: 0.6,
-      });
-    }
-
-    // Semantic: nicknames/pet names used repeatedly
-    const nicknameMatch = msg.match(/gà mập|gà|em yêu|baby|bé|cutie|kute/);
-    if (nicknameMatch) {
-      candidates.push({
-        content: `[${turn.senderName} calls agent: ${nicknameMatch[0]}]`,
-        type: 'semantic',
-        tags: ['nickname', 'relationship'],
         importance: 0.5,
       });
     }
 
-    // Procedural: a workflow or how-to was discussed
-    if (/cách|how to|step|bước|workflow|process|quy trình|command|lệnh/.test(msg)) {
+    // Semantic: user shared a fact, preference, or identity info
+    if (/là|thích|ghét|muốn|cần|prefer|always|never|luôn|không bao giờ|anh.*dùng|em.*dùng/i.test(msg)) {
+      // Extract the actual fact, not just raw message
       candidates.push({
-        content: `[Procedure] ${msg}`,
+        content: `[Fact] ${turn.senderName}: ${msg.slice(0, 200)}`,
+        type: 'semantic',
+        tags: [...this.extractTags(msg), 'preference'],
+        importance: 0.7,
+      });
+    }
+
+    // Semantic: numbers, prices, addresses, technical specs mentioned
+    if (/\$[\d.]+|\d+\s*(TH\/s|GH\/s|PRL|USD|USDT|GB|TB)|0x[a-fA-F0-9]{10,}|prl1[a-z0-9]{20,}/i.test(msg)) {
+      candidates.push({
+        content: `[Data] ${turn.senderName}: ${msg.slice(0, 200)}`,
+        type: 'semantic',
+        tags: [...this.extractTags(msg), 'data', 'numbers'],
+        importance: 0.6,
+      });
+    }
+
+    // Semantic: extract facts from agent response (key findings)
+    if (resp && /giá.*\$|hashrate|online|offline|balance|paid|lãi|lỗ/i.test(resp)) {
+      // Extract the key finding line
+      const keyLine = resp.split('\n').find(l => /\$[\d.]+|\d+.*TH\/s|PRL\/ngày/i.test(l));
+      if (keyLine) {
+        candidates.push({
+          content: `[Finding] ${keyLine.slice(0, 200)}`,
+          type: 'semantic',
+          tags: [...this.extractTags(resp), 'finding'],
+          importance: 0.6,
+        });
+      }
+    }
+
+    // Procedural: a workflow or how-to was discussed
+    if (/cách|how to|step|bước|workflow|process|quy trình|command|lệnh/i.test(msg)) {
+      candidates.push({
+        content: `[Procedure] ${msg.slice(0, 200)}`,
         type: 'procedural',
         tags: [...this.extractTags(msg), 'howto'],
         importance: 0.5,
@@ -185,33 +239,12 @@ export class Hippocampus {
     }
 
     // Procedural: technical decisions/configs
-    if (/config|setting|setup|install|deploy|build|api|token|key/.test(msg)) {
+    if (/config|setting|setup|install|deploy|build|api|token|key|bridge|swap|mine/i.test(msg)) {
       candidates.push({
-        content: `[Technical decision] ${msg}`,
+        content: `[Technical] ${turn.senderName}: ${msg.slice(0, 200)}`,
         type: 'procedural',
         tags: [...this.extractTags(msg), 'technical'],
         importance: 0.5,
-      });
-    }
-
-    // Strong sentiment messages → episodic
-    const sentiment = this.detectStrongSentiment(msg);
-    if (Math.abs(sentiment) > 0.4) {
-      candidates.push({
-        content: `[${turn.senderName}] ${msg}`,
-        type: 'episodic',
-        tags: [...this.extractTags(msg), sentiment > 0 ? 'positive' : 'negative'],
-        importance: 0.6,
-      });
-    }
-
-    // If nothing matched but message is substantial, store as low-importance episodic
-    if (candidates.length === 0 && msg.length > 30) {
-      candidates.push({
-        content: `[${turn.senderName}] ${msg}`,
-        type: 'episodic',
-        tags: this.extractTags(msg),
-        importance: 0.3,
       });
     }
 
@@ -321,12 +354,22 @@ export class Hippocampus {
   /**
    * Get memory stats
    */
-  getStats(): { total: number; episodic: number; semantic: number; procedural: number } {
+  getStats(): { total: number; episodic: number; semantic: number; procedural: number; vectorIndexed: number } {
+    const vectorStats = this.vectorMemory.getStats();
     return {
       total: this.memories.length,
       episodic: this.memories.filter(m => m.type === 'episodic').length,
       semantic: this.memories.filter(m => m.type === 'semantic').length,
       procedural: this.memories.filter(m => m.type === 'procedural').length,
+      vectorIndexed: vectorStats.indexed,
     };
+  }
+
+  /**
+   * Shutdown: close vector DB
+   */
+  async shutdown(): Promise<void> {
+    await this.persist();
+    this.vectorMemory.shutdown();
   }
 }

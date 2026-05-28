@@ -32,6 +32,10 @@ export interface InjectionContext {
   activeHabits: Habit[];
   workingMemory: WorkingMemoryItem[];
   rewardTrend: number;
+  // Phase 5 additions
+  lessonsContext?: string;
+  styleDirectives?: string;
+  suggestionsContext?: string;
 }
 
 export interface InjectionOptions {
@@ -133,6 +137,21 @@ export class ContextInjector {
         : context.rewardTrend < -0.3 ? 'needs_improvement'
         : 'neutral';
       lines.push(`Recent feedback trend: ${trendLabel} (${context.rewardTrend.toFixed(2)})`);
+    }
+
+    // Phase 5: Lessons from past corrections
+    if (context.lessonsContext) {
+      lines.push(context.lessonsContext);
+    }
+
+    // Phase 5: Style directives from personality influence
+    if (context.styleDirectives) {
+      lines.push(context.styleDirectives);
+    }
+
+    // Phase 5: Proactive suggestions
+    if (context.suggestionsContext) {
+      lines.push(context.suggestionsContext);
     }
 
     // Apply priority enforcement — filter out anything that conflicts with SOUL/AGENTS

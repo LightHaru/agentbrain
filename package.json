@@ -1,6 +1,6 @@
 {
   "name": "agentbrain",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Brain-inspired cognitive architecture plugin for AI agents. Self-evolving personality, memory, emotions, and learning.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,7 +36,7 @@
     "openclaw",
     "plugin"
   ],
-  "author": "Sếp & Aira",
+  "author": "S\u1ebfp & Aira",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

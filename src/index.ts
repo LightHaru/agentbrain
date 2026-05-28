@@ -14,11 +14,6 @@ import { TemporalLobe } from './core/temporal.js';
 import { ParietalLobe } from './core/parietal.js';
 import { Insula } from './core/insula.js';
 import { Metacognition } from './core/metacognition.js';
-import { Hypothalamus } from './core/hypothalamus.js';
-import { Brainstem } from './core/brainstem.js';
-import { CorpusCallosum } from './core/corpus-callosum.js';
-import { GlobalWorkspace } from './core/global-workspace.js';
-import { TheoryOfMind } from './core/theory-of-mind.js';
 
 // Re-export all modules for external use
 // Core modules (v1.0)
@@ -36,13 +31,6 @@ export { ParietalLobe } from './core/parietal.js';
 export { Insula } from './core/insula.js';
 export { WorkingMemory } from './core/working-memory.js';
 export { Metacognition } from './core/metacognition.js';
-
-// Phase 2 modules (v0.3.0)
-export { Hypothalamus } from './core/hypothalamus.js';
-export { Brainstem } from './core/brainstem.js';
-export { CorpusCallosum } from './core/corpus-callosum.js';
-export { GlobalWorkspace } from './core/global-workspace.js';
-export { TheoryOfMind } from './core/theory-of-mind.js';
 
 // Storage & Config
 export { BrainFileManager } from './storage/md-writer.js';
@@ -68,13 +56,6 @@ export interface AgentBrainPlugin {
   parietal: ParietalLobe;
   insula: Insula;
   metacognition: Metacognition;
-  
-  // Phase 2 modules (v0.3.0)
-  hypothalamus: Hypothalamus;
-  brainstem: Brainstem;
-  corpusCallosum: CorpusCallosum;
-  globalWorkspace: GlobalWorkspace;
-  theoryOfMind: TheoryOfMind;
   
   initialize(): Promise<void>;
   onPreResponse(context: MessageContext): Promise<BrainContext>;
@@ -147,13 +128,6 @@ export function createAgentBrain(userConfig?: Partial<BrainConfig>): AgentBrainP
   const parietal = new ParietalLobe(config);
   const insula = new Insula(config);
   const metacognition = new Metacognition(config);
-  
-  // Phase 2 modules (v0.3.0)
-  const hypothalamus = new Hypothalamus(config);
-  const brainstem = new Brainstem(config);
-  const corpusCallosum = new CorpusCallosum(config);
-  const globalWorkspace = new GlobalWorkspace(config);
-  const theoryOfMind = new TheoryOfMind(config);
 
   const plugin: AgentBrainPlugin = {
     name: 'agentbrain',
@@ -166,11 +140,6 @@ export function createAgentBrain(userConfig?: Partial<BrainConfig>): AgentBrainP
     parietal,
     insula,
     metacognition,
-    hypothalamus,
-    brainstem,
-    corpusCallosum,
-    globalWorkspace,
-    theoryOfMind,
 
     async initialize(): Promise<void> {
       await fileManager.ensureBrainStructure();

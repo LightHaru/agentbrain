@@ -246,10 +246,14 @@ export class Amygdala {
 
     if (sentiment > 0.2) {
       rel.positiveInteractions++;
-      rel.trustLevel = Math.min(100, rel.trustLevel + 0.5);
-    } else if (sentiment < -0.2) {
+      rel.trustLevel = Math.min(100, rel.trustLevel + 1.5); // Stronger positive boost
+    } else if (sentiment < -0.3) {
+      // Only count clearly negative interactions (higher threshold)
       rel.negativeInteractions++;
-      rel.trustLevel = Math.max(0, rel.trustLevel - 0.3);
+      rel.trustLevel = Math.max(0, rel.trustLevel - 0.5);
+    } else {
+      // Neutral interactions still build trust slowly (user is engaging = trust)
+      rel.trustLevel = Math.min(100, rel.trustLevel + 0.2);
     }
 
     // Depth grows logarithmically with interactions

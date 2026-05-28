@@ -110,8 +110,11 @@ export class AnteriorCingulate {
     const { taskDescription, userMessage, agentResponse, userSentiment, emotionalState } = params;
 
     // Infer outcome from user sentiment
-    const outcome = userSentiment > 0.3 ? 'success'
+    // Neutral or mildly positive = success (user didn't complain = task was fine)
+    // Only count failure when clearly negative
+    const outcome = userSentiment > 0.1 ? 'success'
       : userSentiment < -0.3 ? 'failure'
+      : userSentiment >= -0.1 ? 'success'  // neutral range = acceptable
       : 'partial';
 
     // Self-assess based on response quality signals
