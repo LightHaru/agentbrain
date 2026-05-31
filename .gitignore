@@ -38,3 +38,18 @@ dist/
 brain/
 facebook-post.txt
 *.tgz
+
+# Dev-only — kept local, excluded from the published plugin repo
+test/
+tests/
+demo/
+dashboard/
+scripts/
+snapshots/
+templates/
+vitest.config.ts
+test-results.log
+PHASE1_*.md
+PLAN.md
+INTEGRATION_PLAN.md
+BRAIN_UPGRADE_RESEARCH.md
