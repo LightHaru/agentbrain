@@ -28,6 +28,8 @@ import { Brainstem } from './core/brainstem.js';
 import { CorpusCallosum } from './core/corpus-callosum.js';
 import { GlobalWorkspace } from './core/global-workspace.js';
 import { TheoryOfMind } from './core/theory-of-mind.js';
+import { AffectCore } from './core/affect-core.js';
+import type { DiscreteEmotion } from './core/affect-core.js';
 import type { MessageContext, MessageClassification, Memory } from './index.js';
 
 /** A clock the host can override (e.g. for deterministic tests / time travel). */
@@ -64,6 +66,10 @@ export interface TurnResult {
     reason: string | null;
   };
   emotionalState: { mood: string; intensity: number; valence: number; arousal: number };
+  /** Generated discrete emotion from cognitive appraisal (v0.8.0). Same
+   *  valence can yield pride vs affection vs protective anger depending on
+   *  who caused it and whether the agent can cope. */
+  feeling: { label: string; intensity: number; valence: number; arousal: number; dominance: number };
   neurochemistry: { dopamine: number; serotonin: number; cortisol: number; oxytocin: number; signal: string };
   relevantMemories: Memory[];
   focus: { source: string; content: string; salience: number } | null;
@@ -111,10 +117,13 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
   const corpusCallosum = new CorpusCallosum();
   const globalWorkspace = new GlobalWorkspace();
   const theoryOfMind = new TheoryOfMind();
+  const affect = new AffectCore();
 
   for (const id of ALL_MODULES) corpusCallosum.register(id);
 
   let initialized = false;
+
+  const clampUnit = (n: number): number => Math.max(0, Math.min(1, n));
 
   function severityToDrive(s: TurnResult['threat']['severity']): 'low' | 'medium' | 'high' | 'critical' | null {
     return s === 'none' ? null : s;
@@ -173,8 +182,7 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
       const relevantMemories = await hippocampus.recall(input.message, classification.topic);
 
       // 8. Global workspace: salience competition picks conscious focus.
-      const emo = amygdala.getState();
-      const candidates = [
+      const emo = amygdala.getState();      const candidates = [
         { source: 'amygdala', content: emo.mood, salience: Math.min(1, 0.3 + Math.abs(emo.valence) * 0.7) },
         { source: 'thalamus', content: classification.topic, salience: classification.urgency === 'critical' ? 0.95 : classification.urgency === 'high' ? 0.7 : 0.4 },
       ];
@@ -195,6 +203,28 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
       const neuroSignal = neurochem.describe();
       const focus = globalWorkspace.getState().currentFocus;
 
+      // 9. AffectCore: generate a discrete emotion by appraising the situation
+      //    against the agent's goals, agency, coping and novelty — not keywords.
+      const hypo = hypothalamus.getState();
+      const sev = amy.threat.severity;
+      const threatWeight = sev === 'critical' ? 1 : sev === 'high' ? 0.75 : sev === 'medium' ? 0.5 : sev === 'low' ? 0.3 : 0;
+      // coping: anti-scam paladin can handle most threats (trust its own response),
+      // but raw fund-loss / breach already happened => lower coping.
+      const alreadyHappened = amy.threat.threatType === 'fund_loss' || amy.threat.threatType === 'security_breach';
+      const coping = amy.threat.isThreat ? (alreadyHappened ? 0.3 : 0.7) : 0.6;
+      const tomState = theoryOfMind.getState();
+      const novelty = clampUnit(Math.abs(amy.userSentiment - (tomState.currentUserModel?.lastSentiment ?? 0)));
+      const appraisal = {
+        goalCongruence: amy.threat.isThreat ? -threatWeight : amy.userSentiment,
+        goalRelevance: amy.threat.isThreat ? 0.9 : 0.4 + Math.abs(amy.userSentiment) * 0.5,
+        agency: (amy.threat.isThreat ? 'circumstance' : amy.userSentiment !== 0 ? 'other' : 'self') as 'self' | 'other' | 'circumstance',
+        copingPotential: coping,
+        novelty,
+        certainty: clampUnit(1 - novelty * 0.5),
+      };
+      const feeling: DiscreteEmotion = affect.appraise(appraisal, input.message.slice(0, 50));
+      const affectVAD = affect.getState().dimensional;
+
       return {
         classification: { ...classification },
         userSentiment: amy.userSentiment,
@@ -205,6 +235,13 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
           reason: amy.threat.reason,
         },
         emotionalState: { ...emo },
+        feeling: {
+          label: feeling.label,
+          intensity: feeling.intensity,
+          valence: affectVAD.valence,
+          arousal: affectVAD.arousal,
+          dominance: affectVAD.dominance,
+        },
         neurochemistry: {
           dopamine: neuro.dopamine,
           serotonin: neuro.serotonin,
@@ -221,6 +258,20 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
       hypothalamus.tick(now);
       const fired = brainstem.pump(now);
       neurochem.decay(1);
+      // Spontaneous affect: generate emotion from internal state alone (no input).
+      const h = hypothalamus.getState();
+      const n = neurochem.getState();
+      const drives = h.drives;
+      const drivePressure = drives.length ? drives.reduce((s, d) => s + d.intensity, 0) / drives.length : 0;
+      const curiosityDrive = drives.find((d) => d.id === 'curiosity')?.intensity ?? 0;
+      affect.tick({
+        drivePressure,
+        curiosityDrive,
+        stress: h.homeostasis.stress / 100,
+        serotonin: n.serotonin,
+        dopamine: n.dopamine,
+        circadianAlertness: h.circadian.alertnessLevel,
+      });
       return { autonomicFired: fired };
     },
 
@@ -237,6 +288,7 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
         corpusCallosum: corpusCallosum.getState(),
         globalWorkspace: globalWorkspace.getState(),
         theoryOfMind: theoryOfMind.getState(),
+        affect: affect.getState(),
       });
     },
   };

@@ -42,6 +42,10 @@ export { TheoryOfMind } from './core/theory-of-mind.js';
 // Phase 3 neurochemistry (v0.5.0)
 export { Neurochemistry } from './core/neurochemistry.js';
 
+// Generative affect via cognitive appraisal (v0.8.0)
+export { AffectCore } from './core/affect-core.js';
+export type { EmotionLabel, DiscreteEmotion, AppraisalInput, AffectState, EmotionVAD, Agency } from './core/affect-core.js';
+
 // Agent-neutral SDK engine (v0.7.0)
 export { createBrainEngine } from './engine.js';
 export type { BrainEngine, BrainEngineOptions, TurnInput, TurnResult, Clock } from './engine.js';
