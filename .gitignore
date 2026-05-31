@@ -37,3 +37,4 @@ dashboard/dist/
 dist/
 brain/
 facebook-post.txt
+*.tgz
