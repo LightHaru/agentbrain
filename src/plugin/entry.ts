@@ -32,6 +32,7 @@ import { Brainstem } from '../core/brainstem.js';
 import { CorpusCallosum } from '../core/corpus-callosum.js';
 import { GlobalWorkspace } from '../core/global-workspace.js';
 import { TheoryOfMind } from '../core/theory-of-mind.js';
+import { AffectCore } from '../core/affect-core.js';
 import { BrainFileManager } from '../storage/md-writer.js';
 import { SqlStorageAdapter } from '../storage/sql-adapter.js';
 import { PriorityEnforcer } from '../integration/priority-enforcer.js';
@@ -65,6 +66,7 @@ let brainstem: Brainstem;
 let corpusCallosum: CorpusCallosum;
 let globalWorkspace: GlobalWorkspace;
 let theoryOfMind: TheoryOfMind;
+let affect: AffectCore;
 let fileManager: BrainFileManager;
 let storage: SqlStorageAdapter;
 let enforcer: PriorityEnforcer;
@@ -149,7 +151,8 @@ async function ensureInitialized(config: any): Promise<boolean> {
     corpusCallosum = new CorpusCallosum();
     globalWorkspace = new GlobalWorkspace();
     theoryOfMind = new TheoryOfMind();
-    for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind']) {
+    affect = new AffectCore();
+    for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind', 'affect']) {
       corpusCallosum.register(id);
     }
 
@@ -341,6 +344,22 @@ const _plugin = definePluginEntry({
           neurochem.decay(1); // Phase 3: chemicals drift toward baseline (lingering moods)
           hypothalamus.tick(); // Phase 2: drives grow with neglect over time
           brainstem.pump();    // Phase 2: run due autonomic processes
+          // AffectCore (v0.8.0): spontaneous emotion from internal state, no input
+          try {
+            const h = hypothalamus.getState();
+            const n = neurochem.getState();
+            const drives = h.drives;
+            const drivePressure = drives.length ? drives.reduce((s: number, d: any) => s + d.intensity, 0) / drives.length : 0;
+            const curiosityDrive = drives.find((d: any) => d.id === 'curiosity')?.intensity ?? 0;
+            affect.tick({
+              drivePressure,
+              curiosityDrive,
+              stress: h.homeostasis.stress / 100,
+              serotonin: n.serotonin,
+              dopamine: n.dopamine,
+              circadianAlertness: h.circadian.alertnessLevel,
+            });
+          } catch { /* spontaneous affect is best-effort */ }
           return; // Don't process heartbeat as regular message
         }
 
@@ -416,6 +435,23 @@ const _plugin = definePluginEntry({
             if ((emo.mood === 'alarmed') && hypoStress === 'calm') {
               corpusCallosum.flagConflict('amygdala', 'hypothalamus', 'emotion alarmed vs drive state calm');
             }
+
+            // AffectCore (v0.8.0): GENERATE a discrete emotion via appraisal —
+            // same valence yields different feeling by agency/coping/novelty.
+            try {
+              const isThreat = cls.urgency === 'high' || cls.urgency === 'critical' || emo.mood === 'alarmed';
+              const sev = cls.urgency === 'critical' ? 1 : cls.urgency === 'high' ? 0.75 : 0.4;
+              const tomModel = theoryOfMind.getState().currentUserModel;
+              const novelty = Math.max(0, Math.min(1, Math.abs(sentiment - (tomModel?.lastSentiment ?? 0))));
+              affect.appraise({
+                goalCongruence: isThreat ? -sev : sentiment,
+                goalRelevance: isThreat ? 0.9 : 0.4 + Math.abs(sentiment) * 0.5,
+                agency: isThreat ? 'circumstance' : sentiment !== 0 ? 'other' : 'self',
+                copingPotential: isThreat ? 0.7 : 0.6,
+                novelty,
+                certainty: Math.max(0, Math.min(1, 1 - novelty * 0.5)),
+              }, text.slice(0, 50));
+            } catch { /* affect is best-effort */ }
           } catch (e: any) {
             if (config?.logging) console.warn('[AgentBrain] phase2 processing failed:', e.message);
           }
@@ -634,6 +670,7 @@ const _plugin = definePluginEntry({
           corpusCallosumState: corpusCallosum.getState(),
           globalWorkspaceState: globalWorkspace.getState(),
           theoryOfMindState: theoryOfMind.getState(),
+          affectState: affect.getState(),
         };
       },
     });
