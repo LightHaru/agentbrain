@@ -121,7 +121,9 @@ export class Hypothalamus {
     const rest = this.drives.get('rest')!;
     if (c.alertness < 0.3) rest.intensity = Math.max(rest.intensity, 0.7);
 
-    const drives = Array.from(this.drives.values()).sort((a, b) => b.intensity - a.intensity);
+    const drives = Array.from(this.drives.values())
+      .map((d) => ({ ...d })) // return copies, not live internal references
+      .sort((a, b) => b.intensity - a.intensity);
     const top = drives[0];
 
     const energy = Math.round(c.alertness * 100 * (1 - this.stress * 0.3));
