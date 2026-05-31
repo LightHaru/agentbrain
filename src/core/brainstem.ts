@@ -39,8 +39,8 @@ export class Brainstem {
   private processes: AutonomicProcess[];
   private baseArousal = 0.4;
 
-  constructor() {
-    const now = Date.now();
+  constructor(now = Date.now()) {
+    this.startTime = now;
     this.processes = [
       { id: 'memory-consolidation', name: 'Memory Consolidation', intervalMs: 300000, lastRun: now, enabled: true, action: 'Consolidate short-term memories to long-term', runCount: 0 },
       { id: 'attention-decay', name: 'Attention Decay', intervalMs: 60000, lastRun: now, enabled: true, action: 'Decay unused attention allocations', runCount: 0 },

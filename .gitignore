@@ -35,3 +35,5 @@ dashboard/dist/
 
 # Build output — not committed (build from source)
 dist/
+brain/
+facebook-post.txt

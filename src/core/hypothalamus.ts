@@ -62,9 +62,9 @@ export class Hypothalamus {
   private stress = 0; // 0..1, fed by amygdala threats
   private lastUpdate = Date.now();
 
-  constructor(timezone = 'Asia/Ho_Chi_Minh') {
+  constructor(timezone = 'Asia/Ho_Chi_Minh', now = Date.now()) {
     this.timezone = timezone;
-    const now = Date.now();
+    this.lastUpdate = now;
     const seed: Array<[string, string, number, number]> = [
       ['curiosity', 'Curiosity & Learning', 0.02, 3],
       ['social', 'Social Connection', 0.015, 4],

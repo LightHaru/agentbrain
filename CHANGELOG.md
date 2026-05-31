@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.7.0] - 2026-05-31
+
+### ✨ Agent-neutral SDK engine (createBrainEngine)
+
+Responds directly to the independent v0.6.0 audit: the brain was real but
+still "plugin-shaped" — callers had to wire modules by hand, key classes
+weren't exported, and there was no clean importable entrypoint. v0.7.0 adds a
+stable SDK any external agent (Codex, Claude, a CLI, a test) can drive.
+
+#### New
+- `src/engine.ts` — `createBrainEngine(options)` owns all orchestration. One
+  call wires Thalamus, Hippocampus, Amygdala, Neurochemistry, Hypothalamus,
+  Brainstem, CorpusCallosum, GlobalWorkspace and TheoryOfMind together.
+  - `init()` — idempotent async setup.
+  - `processTurn({ message, userId, ... })` — one stable call per turn;
+    returns a typed, deep-cloned `TurnResult` (classification, sentiment,
+    threat, emotionalState, neurochemistry, focus, relevantMemories).
+  - `tick(now?)` — advances time-based subsystems (drives, autonomic
+    processes, neurochemistry decay); returns which autonomic processes fired.
+  - `getState()` — full `structuredClone` snapshot, no live internal refs.
+- `src/storage/memory-storage.ts` — `MemoryStorage`, an in-memory storage
+  adapter (extends `BrainFileManager`). The engine runs with **zero**
+  filesystem/sqlite dependency by default; `dump()`/`load()` let a host persist.
+- Injectable `clock` and `timezone` options for deterministic / time-travel use.
+
+#### Fixed (audit findings)
+- Barrel API (`src/index.ts`) now exports the previously-missing classes:
+  `Hypothalamus`, `Brainstem`, `CorpusCallosum`, `GlobalWorkspace`,
+  `TheoryOfMind`, `Neurochemistry`, plus `createBrainEngine` and `MemoryStorage`.
+- `Hypothalamus` and `Brainstem` constructors now accept an optional init
+  timestamp so time can be threaded consistently (backward-compatible: defaults
+  to `Date.now()`, so the OpenClaw plugin path is unchanged).
+
+#### Verification
+- New `test/engine-sdk-verify.mjs` drives the engine as an external agent: 23/23.
+- Regression: vitest 207/207, phase2-verify 24/24, neurochem-verify green,
+  codex-agent-eval 19/19 — all still passing.
+
 ## [0.6.0] - 2026-05-31
 
 ### ✨ Phase 2 — Real Cognitive Modules (no more empty shells)
