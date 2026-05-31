@@ -1,9 +1,16 @@
 {
-  "name": "agentbrain",
+  "name": "@klsgg/agentbrain",
   "version": "0.5.0",
   "description": "Brain-inspired cognitive architecture plugin for AI agents. Self-evolving personality, memory, emotions, and learning.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "openclaw": {
     "extensions": [
       "./dist/plugin/entry.js"
@@ -36,21 +43,23 @@
     "openclaw",
     "plugin"
   ],
-  "author": "Sếp & Aira",
+  "author": "KLSGG",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KLSGG/agentbrain.git"
+  },
+  "homepage": "https://github.com/KLSGG/agentbrain#readme",
+  "bugs": {
+    "url": "https://github.com/KLSGG/agentbrain/issues"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.1",
     "better-sqlite3": "^11.0.0",
-    "gray-matter": "^4.0.3",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "recharts": "^3.8.1",
-    "three": "^0.184.0"
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
