@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.8.1] - 2026-05-31
+
+### 🔧 Fix: Vietnamese sentiment detection (feeds AffectCore)
+
+The v0.8.0 dual-judge audit (Codex + native subagent) flagged that genuine
+Vietnamese praise often scored `neutral` through the engine, capping affect
+quality — the bottleneck was the old keyword classifier, not AffectCore.
+
+- `src/core/amygdala.ts` — `detectSentiment()`:
+  - Expanded the Vietnamese lexicon (praise: `giỏi`, `làm tốt`, `chuẩn`,
+    `xịn`, `quá hay`…; affection: `thương`, `quý`, `mến`, `cưng`; sadness,
+    anger, breakage and slowness terms), plus simple negation (`không được`,
+    `chẳng ra gì`) so negated praise reads negative.
+  - Replaced score-averaging with a saturating probabilistic-OR per polarity
+    (`1 - Π(1 - w)`), so a strong signal stays strong instead of being diluted
+    by a second weaker match. Plain messages still return exactly `0`.
+- Word-boundary anchored ambiguous English tokens (`ok`, `good`, `nice`) to
+  avoid matching inside unrelated words.
+
+#### Verification
+- Engine E2E: “em làm tốt lắm” / “chuẩn rồi đó” now → affection (V ≈0.61),
+  previously neutral.
+- Regression unchanged: vitest 207/207, affect 14/14, engine-sdk 23/23,
+  phase2 24/24, codex-agent-eval 19/19, codex-affect-eval 12/12, neurochem green.
+
 ## [0.8.0] - 2026-05-31
 
 ### ✨ Generative affect via cognitive appraisal (AffectCore)

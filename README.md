@@ -6,7 +6,7 @@
 
 > **Give your AI agent a brain.** Persistent memory, a personality that evolves, neurochemistry-driven moods, and the ability to learn from its mistakes — all running locally, with zero extra token cost.
 
-[![Version](https://img.shields.io/badge/version-0.8.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.8.1-blue)]()
 [![Storage](https://img.shields.io/badge/storage-SQLite-orange)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()

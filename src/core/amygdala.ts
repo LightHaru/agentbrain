@@ -54,22 +54,37 @@ const THREAT_PATTERNS = [
 /** Sentiment keyword weights */
 const SENTIMENT_SIGNALS = {
   positive: [
-    { pattern: /cảm ơn|thanks|thank you|tks/i, weight: 0.8 },
-    { pattern: /tuyệt|great|awesome|perfect|đỉnh|ngon|hay/i, weight: 0.7 },
-    { pattern: /thích|love|yêu|❤️|😍|🥰/i, weight: 0.6 },
-    { pattern: /haha|lol|😂|🤣|😁|vui/i, weight: 0.4 },
-    { pattern: /ok|oke|được|good|nice/i, weight: 0.3 },
-    { pattern: /giỏi|kute|cute|hehe|hihi/i, weight: 0.5 },
+    // gratitude
+    { pattern: /cảm ơn|cám ơn|thank you|thanks|tks|thx|biết ơn|cảm kích|mang ơn/i, weight: 0.8 },
+    // strong praise
+    { pattern: /tuyệt vời|tuyệt|xuất sắc|quá đỉnh|đỉnh|great|awesome|amazing|excellent|perfect|hoàn hảo/i, weight: 0.8 },
+    // praise (skill/result)
+    { pattern: /giỏi|làm tốt|tốt lắm|quá hay|hay quá|hay đấy|chuẩn|chính xác|đúng rồi|xịn|ngon|ngon lành|pro|well done|good job/i, weight: 0.7 },
+    // affection
+    { pattern: /thích|yêu|thương|quý|mến|cưng|love|adore|❤️|😍|🥰|😘/i, weight: 0.6 },
+    // cute / playful warmth
+    { pattern: /kute|cute|dễ thương|đáng yêu|hehe|hihi/i, weight: 0.5 },
+    // joy
+    { pattern: /haha|haha|lol|😂|🤣|😁|😄|vui|mừng|sướng|phấn khích|hào hứng|đã quá/i, weight: 0.45 },
+    // mild approval (bounded to avoid matching inside other words like "broken")
+    { pattern: /\bok(e|ay|ie)?\b|\bgood\b|\bnice\b|\bfine\b|\bhay\b|được|ổn|đẹp/i, weight: 0.35 },
   ],
   negative: [
-    { pattern: /tệ|terrible|awful|dở|tệ hại/i, weight: -0.8 },
-    { pattern: /ghét|hate|bực|tức|irritated|frustrated/i, weight: -0.7 },
-    { pattern: /sai|wrong|lỗi|error|fail|broken/i, weight: -0.5 },
-    { pattern: /buồn|sad|😢|😭|disappointed/i, weight: -0.6 },
-    { pattern: /chậm|slow|lag|đợi lâu/i, weight: -0.3 },
+    // negated praise / approval (catch before the positive word fires)
+    { pattern: /không\s*(được|tốt|hay|ổn|ưng|hài lòng)|chẳng\s*(ra gì|tốt|hay|được)|chả\s*(ra gì|được)/i, weight: -0.6 },
+    // bad quality
+    { pattern: /tệ hại|tệ|dở|kém|tồi|terrible|awful|\bbad\b|rác|vứt đi/i, weight: -0.8 },
+    // anger / annoyance
+    { pattern: /ghét|bực|tức|cáu|khó chịu|điên|phiền|irritated|frustrated|annoyed|pissed/i, weight: -0.7 },
+    // errors / breakage
+    { pattern: /\bsai\b|\blỗi\b|hỏng|fail|wrong|error|broken|\bbug\b|không chạy|chẳng chạy|không work|crash/i, weight: -0.55 },
+    // sadness / discouragement
+    { pattern: /buồn|sad|😢|😭|thất vọng|chán nản|nản|tuyệt vọng|mệt mỏi|disappointed/i, weight: -0.6 },
+    // slowness / waiting complaints
+    { pattern: /chậm|\blag\b|\bslow\b|đợi lâu|chờ lâu|\btreo\b|\bđơ\b|ì ạch/i, weight: -0.3 },
   ],
   teasing: [
-    { pattern: /gà mập|gà|mập|khùng|ngu/i, weight: -0.2 },
+    { pattern: /gà mập|gà|mập|khùng|\bngu\b|đần|dại|baka/i, weight: -0.2 },
     { pattern: /chán|die|chết/i, weight: -0.1 },
   ],
 };
@@ -153,32 +168,34 @@ export class Amygdala {
    * Detect user sentiment from message (-1 to 1)
    */
   detectSentiment(message: string): number {
-    let score = 0;
+    // Combine evidence per polarity with a saturating "probabilistic OR"
+    // (1 - Π(1 - w)) instead of averaging. Averaging diluted a strong signal
+    // whenever a second weak word matched; this keeps strong praise/criticism
+    // strong while still capping each side at 1.
+    let posAcc = 1;
+    let negAcc = 1;
     let matches = 0;
 
     for (const signal of SENTIMENT_SIGNALS.positive) {
       if (signal.pattern.test(message)) {
-        score += signal.weight;
+        posAcc *= 1 - Math.min(0.95, signal.weight);
         matches++;
       }
     }
 
-    for (const signal of SENTIMENT_SIGNALS.negative) {
-      if (signal.pattern.test(message)) {
-        score += signal.weight;
-        matches++;
-      }
-    }
-    
-    for (const signal of SENTIMENT_SIGNALS.teasing) {
-      if (signal.pattern.test(message)) {
-        score += signal.weight;
-        matches++;
+    for (const group of [SENTIMENT_SIGNALS.negative, SENTIMENT_SIGNALS.teasing]) {
+      for (const signal of group) {
+        if (signal.pattern.test(message)) {
+          negAcc *= 1 - Math.min(0.95, Math.abs(signal.weight));
+          matches++;
+        }
       }
     }
 
     if (matches === 0) return 0;
-    return Math.max(-1, Math.min(1, score / matches));
+    const positive = 1 - posAcc;
+    const negative = 1 - negAcc;
+    return Math.max(-1, Math.min(1, positive - negative));
   }
 
   /**
