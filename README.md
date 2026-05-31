@@ -4,29 +4,47 @@
 
 # 🧠 AgentBrain
 
-> A brain-inspired cognitive architecture plugin for AI agents. Gives agents persistent memory, evolving personality, emotional awareness, neurochemistry-driven mood, and the ability to learn from mistakes.
+> **Give your AI agent a brain.** Persistent memory, a personality that evolves, neurochemistry-driven moods, and the ability to learn from its mistakes — all running locally, with zero extra token cost.
 
 [![Version](https://img.shields.io/badge/version-0.5.0-blue)]()
-[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen)]()
 [![Storage](https://img.shields.io/badge/storage-SQLite-orange)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
 ---
 
+## Why AgentBrain?
+
+Most AI agents are amnesiacs. Every conversation starts from zero — they forget who you are, repeat mistakes you already corrected, and respond with the same flat tone whether you just shipped a release or lost a week of work.
+
+AgentBrain fixes that. It sits between the incoming message and your agent, quietly doing what a brain does: recalling what matters, reading the emotional context, learning from corrections, and shaping how the agent responds — then injecting a compact (~200 token) cognitive briefing into the prompt.
+
+```text
+Without AgentBrain          With AgentBrain
+──────────────────          ──────────────────
+"Who are you again?"    →    "Welcome back — last time we were
+                              debugging the deploy script."
+repeats corrected bug   →    "Skipping that approach, you told me
+                              it breaks the build."
+flat, stateless tone    →    mood + trust adapt to how the
+                              relationship has actually gone
+```
+
+---
+
 ## Overview
 
-AgentBrain is a plugin for [OpenClaw](https://openclaw.ai) that adds cognitive capabilities to AI agents. Instead of treating every conversation as stateless, AgentBrain gives your agent:
+AgentBrain is a plugin for [OpenClaw](https://openclaw.ai) that gives any agent real cognitive continuity:
 
-- **Persistent memory** with semantic vector recall
-- **Personality** that evolves through interactions
-- **Emotional awareness** — mood, trust, relationship depth
-- **Neurochemistry** — dopamine/serotonin/cortisol/oxytocin give mood real momentum
-- **Learning from corrections** — remembers "don't do X" permanently
-- **Proactive behavior** — suggests actions based on observed patterns
-- **Structured knowledge** — extracts facts, entities, and relationships
+- **Persistent memory** — episodic, semantic, and procedural recall via semantic vector search
+- **Evolving personality** — traits like warmth and directness shift based on how interactions go
+- **Emotional awareness** — tracks mood, trust, and relationship depth over time
+- **Neurochemistry** — dopamine / serotonin / cortisol / oxytocin give mood real momentum instead of resetting every turn
+- **Learning from corrections** — remembers "don't do X" permanently, so mistakes aren't repeated
+- **Proactive behavior** — surfaces suggestions based on patterns it has observed
+- **Structured knowledge** — extracts facts, entities, and relationships into a queryable graph
 
-All processing runs locally. No external API calls. No additional token cost.
+Everything runs locally on SQLite. No external API calls, no added token cost beyond the small in-prompt briefing.
 
 ---
 
