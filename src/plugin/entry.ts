@@ -27,6 +27,11 @@ import { TemporalLobe } from '../core/temporal.js';
 import { ParietalLobe } from '../core/parietal.js';
 import { Insula } from '../core/insula.js';
 import { Metacognition } from '../core/metacognition.js';
+import { Hypothalamus } from '../core/hypothalamus.js';
+import { Brainstem } from '../core/brainstem.js';
+import { CorpusCallosum } from '../core/corpus-callosum.js';
+import { GlobalWorkspace } from '../core/global-workspace.js';
+import { TheoryOfMind } from '../core/theory-of-mind.js';
 import { BrainFileManager } from '../storage/md-writer.js';
 import { SqlStorageAdapter } from '../storage/sql-adapter.js';
 import { PriorityEnforcer } from '../integration/priority-enforcer.js';
@@ -55,6 +60,11 @@ let temporal: TemporalLobe;
 let parietal: ParietalLobe;
 let insula: Insula;
 let metacognition: Metacognition;
+let hypothalamus: Hypothalamus;
+let brainstem: Brainstem;
+let corpusCallosum: CorpusCallosum;
+let globalWorkspace: GlobalWorkspace;
+let theoryOfMind: TheoryOfMind;
 let fileManager: BrainFileManager;
 let storage: SqlStorageAdapter;
 let enforcer: PriorityEnforcer;
@@ -132,6 +142,16 @@ async function ensureInitialized(config: any): Promise<boolean> {
     parietal = new ParietalLobe(brainConfig);
     insula = new Insula(brainConfig);
     metacognition = new Metacognition(brainConfig);
+
+    // Phase 2 modules (v0.6.0) — now REAL, wired into the pipeline
+    hypothalamus = new Hypothalamus('Asia/Ho_Chi_Minh');
+    brainstem = new Brainstem();
+    corpusCallosum = new CorpusCallosum();
+    globalWorkspace = new GlobalWorkspace();
+    theoryOfMind = new TheoryOfMind();
+    for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind']) {
+      corpusCallosum.register(id);
+    }
 
     enforcer = new PriorityEnforcer();
     injector = new ContextInjector(enforcer);
@@ -319,6 +339,8 @@ const _plugin = definePluginEntry({
           heartbeatCount++;
           amygdala.decayToward('neutral', 0.02);
           neurochem.decay(1); // Phase 3: chemicals drift toward baseline (lingering moods)
+          hypothalamus.tick(); // Phase 2: drives grow with neglect over time
+          brainstem.pump();    // Phase 2: run due autonomic processes
           return; // Don't process heartbeat as regular message
         }
 
@@ -358,6 +380,44 @@ const _plugin = definePluginEntry({
             }
             // Also detect relationship patterns
             cerebellum.detectRelationshipPattern(text, msgContext.timestamp);
+          }
+
+          // ─── Phase 2 modules (v0.6.0) — real processing per message ───
+          try {
+            const cls = thalamus.classify(msgContext);
+            const sentiment = amygdala.detectSentiment(text);
+            const emo = amygdala.getState();
+
+            // Hypothalamus: drives respond to topic/sentiment
+            hypothalamus.observe(cls.topic || 'general', sentiment);
+            if (cls.urgency === 'high' || cls.urgency === 'critical') {
+              hypothalamus.registerThreat(cls.urgency as any);
+              brainstem.recordThreat(cls.urgency as any, text.slice(0, 60));
+            }
+            brainstem.pump();
+
+            // Theory of Mind: model this user
+            theoryOfMind.observe(msgContext.senderId, msgContext.senderName, sentiment, cls.topic || 'general');
+            theoryOfMind.noteExpectation(msgContext.senderId, text);
+
+            // Global Workspace: modules compete for the spotlight
+            globalWorkspace.compete([
+              { source: 'thalamus', content: cls.topic || 'general', salience: cls.urgency === 'critical' ? 1 : cls.urgency === 'high' ? 0.8 : 0.4 },
+              { source: 'amygdala', content: emo.mood, salience: Math.min(1, Math.abs(emo.valence) * emo.arousal) },
+              { source: 'theoryOfMind', content: `user:${msgContext.senderName}`, salience: 0.45 },
+            ]);
+
+            // Corpus Callosum: real inter-module traffic
+            corpusCallosum.send({ from: 'thalamus', to: 'amygdala', type: 'classification', payload: cls.topic });
+            corpusCallosum.send({ from: 'amygdala', to: 'hypothalamus', type: 'emotion', payload: emo.mood });
+            corpusCallosum.send({ from: 'theoryOfMind', to: 'globalWorkspace', type: 'user-model' });
+            // Conflict check: emotion alarmed but drives calm = mismatch worth noting
+            const hypoStress = hypothalamus.getState().stressResponse;
+            if ((emo.mood === 'alarmed') && hypoStress === 'calm') {
+              corpusCallosum.flagConflict('amygdala', 'hypothalamus', 'emotion alarmed vs drive state calm');
+            }
+          } catch (e: any) {
+            if (config?.logging) console.warn('[AgentBrain] phase2 processing failed:', e.message);
           }
 
           interactionCount++;
@@ -568,83 +628,12 @@ const _plugin = definePluginEntry({
           parietalState: parietal.getState(),
           insulaState: insula.getState(),
           metacognitionState: metacognition.getState(),
-          // Phase 2: circadian-aware hypothalamus (v0.4.1)
-          hypothalamusState: (() => {
-            const circadian = getCurrentCircadianPhase('Asia/Ho_Chi_Minh');
-            return {
-              circadian: {
-                currentPhase: circadian.phase,
-                alertnessLevel: circadian.alertness,
-                optimalForCreativity: circadian.phase === 'morning',
-                optimalForAnalysis: circadian.phase === 'morning' || circadian.phase === 'afternoon',
-                optimalForRoutine: circadian.alertness >= 0.6,
-                hourOfDay: circadian.hour,
-                timezone: 'Asia/Ho_Chi_Minh',
-              },
-              drives: [
-                { id: 'curiosity', name: 'Curiosity & Learning', intensity: 0.5, lastSatisfied: Date.now(), decayRate: 0.02, priority: 3 },
-                { id: 'social', name: 'Social Connection', intensity: 0.3, lastSatisfied: Date.now(), decayRate: 0.015, priority: 4 },
-                { id: 'achievement', name: 'Achievement & Mastery', intensity: 0.4, lastSatisfied: Date.now(), decayRate: 0.025, priority: 5 },
-                { id: 'rest', name: 'Rest & Recovery', intensity: circadian.alertness < 0.3 ? 0.7 : 0, lastSatisfied: Date.now(), decayRate: 0.01, priority: 2 },
-                { id: 'novelty', name: 'Novelty Seeking', intensity: 0.3, lastSatisfied: Date.now(), decayRate: 0.03, priority: 2 },
-                { id: 'order', name: 'Order & Organization', intensity: 0.2, lastSatisfied: Date.now(), decayRate: 0.01, priority: 1 },
-              ],
-              homeostasis: {
-                energy: circadian.alertness * 100,
-                stress: 0,
-                curiosity: 50,
-                socialNeed: 30,
-                achievementNeed: 40,
-                restNeed: circadian.alertness < 0.3 ? 70 : 0,
-                overallBalance: 0.94,
-              },
-              currentMotivation: {
-                primaryDrive: 'Achievement & Mastery',
-                intensity: 0.4,
-                suggestedAction: 'Complete a task or solve a problem',
-                urgency: 'low',
-              },
-              stressResponse: 'calm',
-            };
-          })(),
-          brainstemState: {
-            alertness: 'alert',
-            arousalLevel: 0.6,
-            activeReflexes: 7,
-            recentThreats: [],
-            autonomicProcesses: [
-              { id: 'memory-consolidation', name: 'Memory Consolidation', intervalMs: 300000, lastRun: Date.now(), enabled: true, action: 'Consolidate short-term memories to long-term' },
-              { id: 'attention-decay', name: 'Attention Decay', intervalMs: 60000, lastRun: Date.now(), enabled: true, action: 'Decay unused attention allocations' },
-              { id: 'stress-regulation', name: 'Stress Regulation', intervalMs: 120000, lastRun: Date.now(), enabled: true, action: 'Gradually reduce stress levels' },
-              { id: 'energy-recovery', name: 'Energy Recovery', intervalMs: 180000, lastRun: Date.now(), enabled: true, action: 'Slowly recover energy during idle periods' },
-              { id: 'threat-scan', name: 'Threat Scanning', intervalMs: 30000, lastRun: Date.now(), enabled: true, action: 'Scan for potential threats in environment' },
-            ],
-            uptime: Date.now() - (globalThis as any).__agentbrainStartTime || 0,
-            responseLatency: 100,
-          },
-          corpusCallosumState: {
-            registeredModules: [],
-            pendingSignals: 0,
-            processedSignals: 0,
-            metrics: { totalMessages: 0, messagesPerMinute: 0, averageLatency: 0, droppedMessages: 0, activeModules: 0, conflicts: 0 },
-            recentConflicts: [],
-          },
-          globalWorkspaceState: {
-            currentFocus: null,
-            consciousnessLevel: 0.7,
-            streamLength: 0,
-            recentFocusCount: 0,
-            integrationScore: 0.5,
-            attentionFilters: [],
-            competitionsResolved: 0,
-          },
-          theoryOfMindState: {
-            activeUsers: 0,
-            currentUserModel: null,
-            predictionAccuracy: 0.5,
-            perspectiveGaps: 0,
-            unmetExpectations: 0,
-          },
+          // Phase 2 modules (v0.6.0) — REAL state from wired modules
+          hypothalamusState: hypothalamus.getState(),
+          brainstemState: brainstem.getState(),
+          corpusCallosumState: corpusCallosum.getState(),
+          globalWorkspaceState: globalWorkspace.getState(),
+          theoryOfMindState: theoryOfMind.getState(),
         };
       },
     });

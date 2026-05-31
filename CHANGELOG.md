@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.6.0] - 2026-05-31
+
+### ✨ Phase 2 — Real Cognitive Modules (no more empty shells)
+
+Five modules that previously reported hardcoded `true` + faked state objects are
+now real classes wired into the message pipeline. Their state changes from
+actual activity and is verifiable.
+
+#### New modules
+- `src/core/hypothalamus.ts` — homeostatic drives (curiosity, social, achievement,
+  rest, novelty, order) that **decay over real elapsed time** and are satisfied by
+  real pipeline events (topic learned, positive sentiment, task success). Stress
+  fed by amygdala threat severity. Circadian phase from `circadian.ts`.
+- `src/core/brainstem.ts` — autonomic processes that **fire on their real
+  intervals** (runCount advances when due), real uptime, threat records with a
+  5-min relevance window, arousal/alertness derived from recent threat activity,
+  faster response latency under threat.
+- `src/core/corpus-callosum.ts` — inter-module signal bus that **counts real
+  traffic**, measures latency, drops signals to unregistered targets, and records
+  cross-module conflicts (e.g. amygdala alarmed vs hypothalamus calm).
+- `src/core/global-workspace.ts` — attention competition where modules compete by
+  **salience**; winner becomes conscious focus and enters a bounded stream.
+  Consciousness level + integration score derived from real recent activity.
+- `src/core/theory-of-mind.ts` — per-user mental model (sentiment trend, recurring
+  topics, inferred mood, expectations) with **next-sentiment prediction scored
+  against reality**. `activeUsers` reflects real distinct senders.
+
+#### Pipeline wiring (`src/plugin/entry.ts`)
+- All five initialized in `ensureInitialized`; corpus callosum registers modules.
+- `message_received`: hypothalamus.observe, brainstem threat/pump, theoryOfMind
+  model + expectations, globalWorkspace competition, corpusCallosum routing +
+  conflict detection.
+- heartbeat: `hypothalamus.tick()` + `brainstem.pump()` so drives grow and
+  autonomic processes run during idle.
+- `agentbrain_status` now returns **live** state from these modules instead of the
+  inline hardcoded objects.
+
+#### Tests
+- New `test/phase2-verify.mjs`: 24 checks proving each module's state changes from
+  real activity (drives drop on success / rise on neglect, processes fire on
+  intervals, bus counts/drops correctly, competition picks by salience, user
+  models + prediction scoring). 24/24 pass.
+- Existing suite unaffected: 207/207 vitest + neurochem verify still green.
+
+#### Notes
+- Removed orphaned `dist/core/*.js` build artifacts (brainstem, corpus-callosum,
+  global-workspace, hypothalamus, theory-of-mind) that shipped from stale builds
+  before the real source existed.
+
 ## [0.5.0] - 2026-05-31
 
 ### ✨ Phase 3 — Neurochemistry (Neuromodulator System)
