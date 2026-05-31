@@ -1,0 +1,585 @@
+/**
+ * Parietal Lobe — Sensory Integration & Spatial Reasoning
+ * 
+ * Like the brain's parietal lobe, this module handles:
+ * - Multi-modal sensory integration (text + image + code + audio)
+ * - Spatial reasoning (code structure, architecture, relationships)
+ * - Attention allocation (limited resource, priority-based)
+ * - Numerical & logical reasoning
+ * 
+ * Key areas:
+ * - Somatosensory cortex: Sensory input processing
+ * - Posterior parietal cortex: Spatial awareness & attention
+ * - Angular gyrus: Mathematical reasoning
+ */
+
+import { BrainConfig } from './config.js';
+
+// ============================================================================
+// Types & Interfaces
+// ============================================================================
+
+export type SensoryModality = 'text' | 'image' | 'code' | 'audio' | 'video';
+
+export interface SensoryInput {
+  /** Type of sensory input */
+  modality: SensoryModality;
+  
+  /** Raw data */
+  data: any;
+  
+  /** When this input was received */
+  timestamp: number;
+  
+  /** Importance/salience (0-1) */
+  importance: number;
+  
+  /** Optional metadata */
+  metadata?: Record<string, any>;
+}
+
+export interface IntegratedPercept {
+  /** Primary modality (most important) */
+  primaryModality: SensoryModality;
+  
+  /** Fused representation combining all modalities */
+  fusedRepresentation: any;
+  
+  /** Confidence in this integration */
+  confidence: number;
+  
+  /** Spatial information if applicable */
+  spatialInfo?: SpatialMap;
+  
+  /** Contributing inputs */
+  sources: SensoryInput[];
+}
+
+export interface SpatialMap {
+  /** Structure representation (tree/graph) */
+  structure: any;
+  
+  /** Relationships between elements */
+  relationships: Array<{
+    from: string;
+    to: string;
+    type: 'parent-child' | 'sibling' | 'depends-on' | 'contains' | 'references';
+    strength: number;
+  }>;
+  
+  /** Hierarchical levels */
+  hierarchy: string[];
+  
+  /** Spatial properties */
+  properties: {
+    depth: number;
+    breadth: number;
+    complexity: number;
+  };
+}
+
+export interface Task {
+  /** Task identifier */
+  id: string;
+  
+  /** Task description */
+  description: string;
+  
+  /** Priority (0-1, higher = more important) */
+  priority: number;
+  
+  /** Estimated cognitive load */
+  cognitiveLoad: number;
+  
+  /** Deadline (optional) */
+  deadline?: number;
+  
+  /** Current status */
+  status: 'pending' | 'active' | 'completed' | 'blocked';
+}
+
+export interface AttentionAllocation {
+  /** Tasks with allocated attention */
+  tasks: Array<{
+    taskId: string;
+    attentionWeight: number; // 0-1
+    reason: string;
+  }>;
+  
+  /** Total attention budget (always 1.0) */
+  totalBudget: number;
+  
+  /** Remaining unallocated attention */
+  remainingBudget: number;
+  
+  /** Current focus (task receiving most attention) */
+  currentFocus: string | null;
+}
+
+export interface ComparisonResult {
+  /** Which is greater: 'a', 'b', or 'equal' */
+  result: 'a' | 'b' | 'equal';
+  
+  /** Magnitude of difference */
+  difference: number;
+  
+  /** Confidence in comparison */
+  confidence: number;
+}
+
+// ============================================================================
+// Parietal Lobe Class
+// ============================================================================
+
+export class ParietalLobe {
+  private config: BrainConfig;
+  
+  /** Recent sensory inputs (short-term buffer) */
+  private sensoryBuffer: SensoryInput[];
+  
+  /** Maximum buffer size */
+  private readonly BUFFER_SIZE = 20;
+  
+  /** Current attention allocation */
+  private attentionState: AttentionAllocation;
+  
+  /** Active tasks */
+  private activeTasks: Map<string, Task>;
+
+  constructor(config: BrainConfig) {
+    this.config = config;
+    this.sensoryBuffer = [];
+    this.activeTasks = new Map();
+    this.attentionState = {
+      tasks: [],
+      totalBudget: 1.0,
+      remainingBudget: 1.0,
+      currentFocus: null,
+    };
+  }
+
+  // ==========================================================================
+  // Sensory Integration
+  // ==========================================================================
+
+  /**
+   * Integrate multiple sensory inputs into unified percept
+   */
+  integrateSensoryInput(inputs: SensoryInput[]): IntegratedPercept {
+    // Add to buffer
+    this.sensoryBuffer.push(...inputs);
+    
+    // Trim buffer to size
+    if (this.sensoryBuffer.length > this.BUFFER_SIZE) {
+      this.sensoryBuffer = this.sensoryBuffer.slice(-this.BUFFER_SIZE);
+    }
+    
+    // Find primary modality (highest importance)
+    const primary = inputs.reduce((max, input) => 
+      input.importance > max.importance ? input : max
+    );
+    
+    // Fuse representations
+    const fused = this.fuseRepresentations(inputs);
+    
+    // Extract spatial information if applicable
+    const spatialInfo = this.extractSpatialInfo(inputs);
+    
+    // Calculate confidence
+    const confidence = this.calculateIntegrationConfidence(inputs);
+    
+    return {
+      primaryModality: primary.modality,
+      fusedRepresentation: fused,
+      confidence,
+      spatialInfo,
+      sources: inputs,
+    };
+  }
+
+  /**
+   * Fuse multiple sensory representations
+   */
+  private fuseRepresentations(inputs: SensoryInput[]): any {
+    // Simple fusion: combine all data with weights
+    const fused: any = {
+      modalities: inputs.map(i => i.modality),
+      timestamp: Date.now(),
+      combined: {},
+    };
+    
+    for (const input of inputs) {
+      fused.combined[input.modality] = {
+        data: input.data,
+        importance: input.importance,
+        metadata: input.metadata,
+      };
+    }
+    
+    return fused;
+  }
+
+  /**
+   * Extract spatial information from inputs
+   */
+  private extractSpatialInfo(inputs: SensoryInput[]): SpatialMap | undefined {
+    // Look for code or structured data
+    const codeInput = inputs.find(i => i.modality === 'code');
+    
+    if (codeInput && typeof codeInput.data === 'string') {
+      return this.analyzeSpatialStructure(codeInput.data);
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Calculate confidence in sensory integration
+   */
+  private calculateIntegrationConfidence(inputs: SensoryInput[]): number {
+    // More inputs with high importance = higher confidence
+    const avgImportance = inputs.reduce((sum, i) => sum + i.importance, 0) / inputs.length;
+    const modalityDiversity = new Set(inputs.map(i => i.modality)).size / 5; // max 5 modalities
+    
+    return (avgImportance + modalityDiversity) / 2;
+  }
+
+  // ==========================================================================
+  // Spatial Reasoning
+  // ==========================================================================
+
+  /**
+   * Analyze spatial structure of code or data
+   */
+  analyzeSpatialStructure(data: any): SpatialMap {
+    // Simple heuristic for code structure
+    // In production, use AST parsing
+    
+    const relationships: SpatialMap['relationships'] = [];
+    const hierarchy: string[] = [];
+    
+    if (typeof data === 'string') {
+      // Count nesting levels (indentation)
+      const lines = data.split('\n');
+      let maxDepth = 0;
+      let currentDepth = 0;
+      
+      for (const line of lines) {
+        const indent = line.match(/^\s*/)?.[0].length || 0;
+        currentDepth = Math.floor(indent / 2);
+        maxDepth = Math.max(maxDepth, currentDepth);
+      }
+      
+      // Extract function/class names (simple regex)
+      const functionMatches = data.match(/function\s+(\w+)|class\s+(\w+)|const\s+(\w+)\s*=/g) || [];
+      hierarchy.push(...functionMatches.map(m => m.split(/\s+/)[1]));
+      
+      return {
+        structure: { type: 'code', lines: lines.length },
+        relationships,
+        hierarchy,
+        properties: {
+          depth: maxDepth,
+          breadth: hierarchy.length,
+          complexity: maxDepth * hierarchy.length,
+        },
+      };
+    }
+    
+    // Default empty structure
+    return {
+      structure: {},
+      relationships: [],
+      hierarchy: [],
+      properties: { depth: 0, breadth: 0, complexity: 0 },
+    };
+  }
+
+  /**
+   * Find spatial relationships between elements
+   */
+  findSpatialRelationships(element1: string, element2: string, structure: SpatialMap): string | null {
+    // Check if elements are related in the structure
+    const rel = structure.relationships.find(
+      r => (r.from === element1 && r.to === element2) || (r.from === element2 && r.to === element1)
+    );
+    
+    return rel ? rel.type : null;
+  }
+
+  // ==========================================================================
+  // Attention Allocation
+  // ==========================================================================
+
+  /**
+   * Allocate attention across multiple tasks
+   */
+  allocateAttention(tasks: Task[]): AttentionAllocation {
+    // Update active tasks
+    for (const task of tasks) {
+      this.activeTasks.set(task.id, task);
+    }
+    
+    // Calculate attention weights based on priority and deadline
+    const weights = tasks.map(task => {
+      let weight = task.priority;
+      
+      // Boost weight if deadline is near
+      if (task.deadline) {
+        const timeLeft = task.deadline - Date.now();
+        const urgency = Math.max(0, 1 - timeLeft / (24 * 60 * 60 * 1000)); // 1 day = max urgency
+        weight = Math.min(1, weight + urgency * 0.3);
+      }
+      
+      // Reduce weight by cognitive load (harder tasks get less attention)
+      weight = weight * (1 - task.cognitiveLoad * 0.2);
+      
+      return { taskId: task.id, weight };
+    });
+    
+    // Normalize weights to sum to 1.0
+    const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+    const normalized = weights.map(w => ({
+      taskId: w.taskId,
+      attentionWeight: totalWeight > 0 ? w.weight / totalWeight : 0,
+      reason: this.explainAttentionAllocation(w.taskId, w.weight / totalWeight),
+    }));
+    
+    // Find current focus (highest attention)
+    const focus = normalized.reduce((max, curr) => 
+      curr.attentionWeight > max.attentionWeight ? curr : max
+    , normalized[0]);
+    
+    this.attentionState = {
+      tasks: normalized,
+      totalBudget: 1.0,
+      remainingBudget: 0, // all allocated
+      currentFocus: focus?.taskId || null,
+    };
+    
+    return this.attentionState;
+  }
+
+  /**
+   * Explain why attention was allocated this way
+   */
+  private explainAttentionAllocation(taskId: string, weight: number): string {
+    const task = this.activeTasks.get(taskId);
+    if (!task) return 'Unknown task';
+    
+    if (weight > 0.5) {
+      return `High priority (${task.priority.toFixed(2)}) and urgent`;
+    } else if (weight > 0.3) {
+      return `Moderate priority (${task.priority.toFixed(2)})`;
+    } else {
+      return `Lower priority or high cognitive load`;
+    }
+  }
+
+  /**
+   * Get current attention state
+   */
+  getAttentionState(): AttentionAllocation {
+    return this.attentionState;
+  }
+
+  /**
+   * Shift attention to a specific task
+   */
+  shiftAttention(taskId: string): void {
+    const task = this.activeTasks.get(taskId);
+    if (!task) return;
+    
+    // Boost this task's attention
+    const existing = this.attentionState.tasks.find(t => t.taskId === taskId);
+    if (existing) {
+      existing.attentionWeight = Math.min(1, existing.attentionWeight + 0.2);
+      this.attentionState.currentFocus = taskId;
+    }
+  }
+
+  // ==========================================================================
+  // Numerical & Logical Reasoning
+  // ==========================================================================
+
+  /**
+   * Perform numerical calculation (safe, no eval)
+   */
+  performCalculation(expression: string): number {
+    try {
+      // Safe arithmetic: only allow digits, operators, parentheses, decimal points
+      const sanitized = expression.replace(/\s/g, '');
+      if (!/^[\d+\-*/().%]+$/.test(sanitized)) {
+        return NaN;
+      }
+      // Simple recursive descent parser for basic arithmetic
+      let pos = 0;
+      const peek = () => sanitized[pos];
+      const next = () => sanitized[pos++];
+      
+      const parseNumber = (): number => {
+        let num = '';
+        if (peek() === '(') {
+          next(); // skip (
+          const result = parseExpr();
+          next(); // skip )
+          return result;
+        }
+        while (pos < sanitized.length && /[\d.]/.test(peek())) {
+          num += next();
+        }
+        return parseFloat(num);
+      };
+      
+      const parseFactor = (): number => {
+        let result = parseNumber();
+        while (pos < sanitized.length && (peek() === '*' || peek() === '/' || peek() === '%')) {
+          const op = next();
+          const right = parseNumber();
+          if (op === '*') result *= right;
+          else if (op === '/') result /= right;
+          else result %= right;
+        }
+        return result;
+      };
+      
+      const parseExpr = (): number => {
+        let result = parseFactor();
+        while (pos < sanitized.length && (peek() === '+' || peek() === '-')) {
+          const op = next();
+          const right = parseFactor();
+          if (op === '+') result += right;
+          else result -= right;
+        }
+        return result;
+      };
+      
+      return parseExpr();
+    } catch (error) {
+      return NaN;
+    }
+  }
+
+  /**
+   * Compare two quantities
+   */
+  compareQuantities(a: number, b: number): ComparisonResult {
+    const difference = Math.abs(a - b);
+    const relativeDiff = difference / Math.max(Math.abs(a), Math.abs(b), 1);
+    
+    // Confidence based on how clear the difference is
+    const confidence = Math.min(1, relativeDiff * 2);
+    
+    let result: 'a' | 'b' | 'equal';
+    if (Math.abs(a - b) < 0.0001) {
+      result = 'equal';
+    } else if (a > b) {
+      result = 'a';
+    } else {
+      result = 'b';
+    }
+    
+    return { result, difference, confidence };
+  }
+
+  /**
+   * Logical reasoning: check if condition is satisfied
+   */
+  evaluateCondition(condition: string, context: Record<string, any>): boolean {
+    // Safe condition evaluation without eval
+    try {
+      // Replace variables with values
+      let expr = condition;
+      for (const [key, value] of Object.entries(context)) {
+        expr = expr.replace(new RegExp(`\\b${key}\\b`, 'g'), JSON.stringify(value));
+      }
+      
+      // Simple comparison parser instead of eval
+      // Supports: ==, !=, >, <, >=, <=, &&, ||
+      const comparisons: Record<string, (a: any, b: any) => boolean> = {
+        '===': (a, b) => a === b,
+        '!==': (a, b) => a !== b,
+        '==': (a, b) => a == b,
+        '!=': (a, b) => a != b,
+        '>=': (a, b) => a >= b,
+        '<=': (a, b) => a <= b,
+        '>': (a, b) => a > b,
+        '<': (a, b) => a < b,
+      };
+      
+      // Try simple "a op b" pattern
+      for (const [op, fn] of Object.entries(comparisons)) {
+        if (expr.includes(op)) {
+          const parts = expr.split(op).map(s => s.trim());
+          if (parts.length === 2) {
+            const a = JSON.parse(parts[0]);
+            const b = JSON.parse(parts[1]);
+            return fn(a, b);
+          }
+        }
+      }
+      
+      // Fallback: try parsing as boolean literal
+      const trimmed = expr.trim().toLowerCase();
+      return trimmed === 'true' || trimmed === '1';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // ==========================================================================
+  // Task Management
+  // ==========================================================================
+
+  /**
+   * Add a new task
+   */
+  addTask(task: Task): void {
+    this.activeTasks.set(task.id, task);
+  }
+
+  /**
+   * Update task status
+   */
+  updateTaskStatus(taskId: string, status: Task['status']): void {
+    const task = this.activeTasks.get(taskId);
+    if (task) {
+      task.status = status;
+    }
+  }
+
+  /**
+   * Get all active tasks
+   */
+  getActiveTasks(): Task[] {
+    return Array.from(this.activeTasks.values()).filter(t => t.status !== 'completed');
+  }
+
+  /**
+   * Remove completed tasks
+   */
+  pruneCompletedTasks(): void {
+    for (const [id, task] of this.activeTasks.entries()) {
+      if (task.status === 'completed') {
+        this.activeTasks.delete(id);
+      }
+    }
+  }
+
+  // ==========================================================================
+  // Introspection & Debugging
+  // ==========================================================================
+
+  /**
+   * Get current state for debugging
+   */
+  getState() {
+    return {
+      sensoryBufferSize: this.sensoryBuffer.length,
+      activeTasksCount: this.activeTasks.size,
+      currentFocus: this.attentionState.currentFocus,
+      attentionAllocated: this.attentionState.tasks.length,
+      recentModalities: [...new Set(this.sensoryBuffer.slice(-5).map(i => i.modality))],
+    };
+  }
+}

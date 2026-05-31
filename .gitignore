@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Local brain data — NEVER commit (contains real user memories/PII)
+.demo-brain/
+*.demo-brain/
+.test-brain-*/
+data/
+brain.db
+brain.db-*
+*.sqlite
+*.sqlite-*
+
+# Local brain markdown state
+emotional/neurochemistry.md
+emotional/relationship.md
+emotional/state.md
+
+# Env / secrets
+.env
+.env.*
+*.local
+*.key
+*.pem
+
+# Logs / temp
+*.log
+.DS_Store
+tmp/
+coverage/
+
+# Dashboard build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
+# Build output — not committed (build from source)
+dist/
