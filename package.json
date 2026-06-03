@@ -1,6 +1,6 @@
 {
-  "name": "@klsgg/agentbrain",
-  "version": "0.8.1",
+  "name": "@lightharu/agentbrain",
+  "version": "0.8.2",
   "description": "Brain-inspired cognitive architecture plugin for AI agents. Self-evolving personality, memory, emotions, and learning.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
