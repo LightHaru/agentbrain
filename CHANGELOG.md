@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.8.2] - 2026-06-03
+
+### 🧠 Graph-Memory Integration & Enhanced Hippocampus
+
+v0.8.2 introduces semantic entity/relationship recall via knowledge graphs,
+complementing the existing vector-memory layer. The system now performs dual-layer
+memory retrieval: vector similarity (fast pattern matching) + graph traversal
+(semantic relationships), enabling long-term context preservation across sessions.
+
+#### New
+- `src/core/graph-memory.ts` — `GraphMemory` with BGE embeddings:
+  - Entity extraction & relationship mapping from sessions
+  - Semantic search via graph traversal (1-2 hops)
+  - Relationship confidence scoring (0-1)
+  - Integration with existing vector-memory layer
+
+- `src/storage/brain-db.ts` — Enhanced database layer:
+  - SQLite graph storage (entities, relationships, sessions)
+  - Vector indexing for fast similarity queries
+  - Graph traversal queries
+  - Migration utilities from old format
+
+- `src/core/knowledge-extractor.ts` — Fact/entity extraction:
+  - Session-to-facts pipeline
+  - Automatic entity linking
+  - Relationship type inference
+
+#### Enhanced
+- `src/core/hippocampus.ts` — Improved memory consolidation:
+  - Multi-source recall: graph + vector + session history
+  - Context mixing: balance recent + semantic matches
+  - Better long-term retention signals
+
+- `src/integration/context-injector.ts` — Multi-layer memory injection:
+  - Graph entities auto-injected to system prompt
+  - Related memories ranked by recency + relevance
+  - Circular dependency detection
+
+#### Documentation
+- `MEMORY_GRAPH_UPGRADE_PLAN.md` — Migration guide for existing deployments
+- `scripts/migrate-memory-graph.mjs` — Automated migration script
+- New test suite: `tests/graph-memory.test.ts`
+
+#### Verification
+- Graph traversal E2E: Entity relationships recall correctly across 2-hop paths
+- Vector + graph hybrid: Dual-layer retrieval improves hit rate vs. vector-only
+- Zero regression: All existing memory tests pass (vitest 207/207)
+- Performance: Graph queries <50ms (SQLite indexed)
+
+---
+
 ## [0.8.1] - 2026-05-31
 
 ### 🔧 Fix: Vietnamese sentiment detection (feeds AffectCore)
