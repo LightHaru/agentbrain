@@ -81,10 +81,174 @@ let interactionCount = 0;
 let heartbeatCount = 0;
 let lastMessageContext: MessageContext | null = null;
 let lastAgentResponse = '';
+const latestMessageBySession = new Map<string, MessageContext>();
+const latestMessageByRun = new Map<string, MessageContext>();
+const MESSAGE_CACHE_LIMIT = 100;
+const DEFAULT_PROMPT_INJECTION_TOKENS = 450;
+const MIN_PROMPT_INJECTION_TOKENS = 300;
 
 function resolveDir(dir: string): string {
   if (dir.startsWith('~')) return resolve(homedir(), dir.slice(2));
   return resolve(dir);
+}
+
+function compactText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function readText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!value) return '';
+
+  if (Array.isArray(value)) {
+    return value.map(readText).filter(Boolean).join('\n');
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of ['text', 'body', 'content', 'message', 'prompt', 'input', 'bodyForAgent', 'transcript']) {
+      const text = readText(record[key]);
+      if (text) return text;
+    }
+    for (const key of ['parts', 'blocks', 'messages']) {
+      const text = readText(record[key]);
+      if (text) return text;
+    }
+  }
+
+  return '';
+}
+
+function extractEventText(event: any): string {
+  return compactText(readText(event?.content)
+    || readText(event?.bodyForAgent)
+    || readText(event?.body)
+    || readText(event?.message)
+    || readText(event?.input)
+    || readText(event?.transcript));
+}
+
+function looksLikeSystemPrompt(text: string): boolean {
+  const head = text.slice(0, 800).toLowerCase();
+  return text.length > 800 && (
+    head.includes('knowledge cutoff')
+    || head.includes('developer instructions')
+    || head.includes('you are codex')
+    || head.includes('system prompt')
+    || head.includes('current date:')
+  );
+}
+
+function extractPromptText(event: any): string {
+  const prompt = compactText(readText(event?.prompt));
+  if (!prompt || looksLikeSystemPrompt(prompt)) return '';
+  return prompt;
+}
+
+function extractLatestUserMessage(messages: unknown): string {
+  if (!Array.isArray(messages)) return '';
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i] as Record<string, unknown> | undefined;
+    if (!msg || typeof msg !== 'object') continue;
+    const role = String(msg.role || msg.type || (msg.author as any)?.role || '').toLowerCase();
+    if (role && !/user|human|owner/.test(role)) continue;
+    const text = compactText(readText(msg));
+    if (text && !looksLikeSystemPrompt(text)) return text;
+  }
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const text = compactText(readText(messages[i]));
+    if (text && !looksLikeSystemPrompt(text)) return text;
+  }
+
+  return '';
+}
+
+function resolveSessionKey(event: any, ctx: any, fallback = ''): string {
+  const value = ctx?.sessionKey
+    ?? event?.sessionKey
+    ?? ctx?.sessionId
+    ?? event?.sessionId
+    ?? event?.context?.sessionKey
+    ?? event?.context?.sessionId
+    ?? event?.conversationId
+    ?? event?.threadId
+    ?? fallback;
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  return fallback;
+}
+
+function resolveRunId(event: any, ctx: any): string {
+  const value = ctx?.runId ?? event?.runId ?? event?.context?.runId;
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  return '';
+}
+
+function rememberCachedMessage(map: Map<string, MessageContext>, key: string, value: MessageContext): void {
+  if (!key) return;
+  map.set(key, value);
+  while (map.size > MESSAGE_CACHE_LIMIT) {
+    const oldest = map.keys().next().value;
+    if (!oldest) break;
+    map.delete(oldest);
+  }
+}
+
+function rememberMessageContext(messageContext: MessageContext, event: any, ctx: any): void {
+  const sessionKey = resolveSessionKey(event, ctx, messageContext.sessionId);
+  const runId = resolveRunId(event, ctx);
+  rememberCachedMessage(latestMessageBySession, sessionKey, messageContext);
+  rememberCachedMessage(latestMessageByRun, runId, messageContext);
+  lastMessageContext = messageContext;
+}
+
+function getCachedMessageContext(event: any, ctx: any, allowGlobalFallback = false): MessageContext | null {
+  const runId = resolveRunId(event, ctx);
+  if (runId && latestMessageByRun.has(runId)) return latestMessageByRun.get(runId)!;
+
+  const sessionKey = resolveSessionKey(event, ctx);
+  if (sessionKey && latestMessageBySession.has(sessionKey)) return latestMessageBySession.get(sessionKey)!;
+
+  if (allowGlobalFallback && !sessionKey) return lastMessageContext;
+  return null;
+}
+
+function resolvePromptMessageContext(event: any, ctx: any): MessageContext | null {
+  const cachedByRun = resolveRunId(event, ctx)
+    ? latestMessageByRun.get(resolveRunId(event, ctx))
+    : null;
+  const cachedBySession = resolveSessionKey(event, ctx)
+    ? latestMessageBySession.get(resolveSessionKey(event, ctx))
+    : null;
+  const cached = cachedByRun || cachedBySession || (!resolveSessionKey(event, ctx) ? lastMessageContext : null);
+  const message = compactText(cachedByRun?.message
+    || extractPromptText(event)
+    || cached?.message
+    || extractLatestUserMessage(event?.messages));
+
+  if (!message || message.length < 3) return null;
+
+  return {
+    message,
+    senderId: cached?.senderId || event?.senderId || 'unknown',
+    senderName: cached?.senderName || event?.senderName || event?.from || 'User',
+    timestamp: cached?.timestamp || new Date().toISOString(),
+    sessionId: resolveSessionKey(event, ctx, cached?.sessionId || ''),
+    metadata: cached?.metadata || event?.metadata,
+  };
+}
+
+function resolveInjectionTokenBudget(config: any): number {
+  const configured = Number(config?.maxInjectionTokens);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_PROMPT_INJECTION_TOKENS;
+  return Math.max(MIN_PROMPT_INJECTION_TOKENS, Math.min(800, Math.round(configured)));
+}
+
+function resolveGraphRecallDepth(config: any): number {
+  const configured = Number(config?.graphRecallDepth);
+  if (!Number.isFinite(configured)) return 2;
+  return Math.max(0, Math.min(3, Math.round(configured)));
 }
 
 async function ensureInitialized(config: any): Promise<boolean> {
@@ -214,17 +378,9 @@ const _plugin = definePluginEntry({
         if (!await ensureInitialized(config)) return;
 
         try {
-          // Use last message context if available
-          const message = event.prompt?.slice(0, 200) || '';
-          if (!message) return;
-
-          const msgContext: MessageContext = {
-            message,
-            senderId: lastMessageContext?.senderId || 'unknown',
-            senderName: lastMessageContext?.senderName || 'User',
-            timestamp: new Date().toISOString(),
-            sessionId: ctx?.sessionKey || '',
-          };
+          const msgContext = resolvePromptMessageContext(event, ctx);
+          if (!msgContext) return;
+          const message = msgContext.message;
 
           // Thalamus classifies
           const classification = thalamus.classify(msgContext);
@@ -252,7 +408,21 @@ const _plugin = definePluginEntry({
           const recallQuery = semanticRep.concepts.length > 0
             ? semanticRep.concepts.join(' ')
             : message;
-          const relevantMemories = await hippocampus.recall(recallQuery, classification.topic);
+          const graphRecallDepth = resolveGraphRecallDepth(config);
+          const relevantMemories = await hippocampus.recall(recallQuery, {
+            topic: classification.topic,
+            limit: config?.maxRecallResults ?? defaultConfig.maxRecallResults,
+            useVector: false,
+            relationshipDepth: graphRecallDepth,
+          });
+          const graphRecall = graphRecallDepth > 0
+            ? hippocampus.recallGraph(recallQuery, graphRecallDepth)
+            : null;
+          const graphContext = [
+            'Current graph memory: AgentBrain uses ~/.openclaw/data/agentbrain/brain.db for entity and relationship recall.',
+            'Standalone memory-graph plugin and database are retired; current recall should prefer AgentBrain brain.db.',
+            ...(graphRecall?.context || []),
+          ];
 
           // Amygdala emotion state
           const emotionalState = amygdala.getState();
@@ -288,11 +458,13 @@ const _plugin = definePluginEntry({
 
           // Build injection context
           const injectionContext: InjectionContext = {
+            currentMessage: message,
             classification,
             emotionalState,
             personality: cingulate.getPersonality(),
             relationship: relationship || null,
             relevantMemories,
+            graphContext,
             topSkills: cerebellum.getTopSkills(3),
             activeHabits: cerebellum.getActiveHabits(),
             workingMemory: prefrontal.getWorkingMemory(),
@@ -304,7 +476,7 @@ const _plugin = definePluginEntry({
 
           // Generate injectable context
           const brainContext = injector.inject(injectionContext, {
-            maxTokens: config?.maxInjectionTokens ?? 250,
+            maxTokens: resolveInjectionTokenBudget(config),
           });
 
           if (!brainContext || brainContext.length < 20) return;
@@ -313,27 +485,25 @@ const _plugin = definePluginEntry({
             console.log(`[AgentBrain] Injecting brain context (${brainContext.length} chars)`);
           }
 
-          return { appendContext: brainContext };
+          return { prependSystemContext: brainContext };
         } catch (err: any) {
           console.warn('[AgentBrain] Prompt injection failed:', err.message);
           return;
         }
       },
-      { priority: 20 } // after memory-graph (priority 10)
+      { priority: 5 }
     );
 
     // ─── HOOK: message_received ───
     // Process incoming message: classify, detect emotion, plan
     api.on(
       'message_received',
-      async (event: any) => {
-        const config = event.context?.pluginConfig;
+      async (event: any, ctx: any) => {
+        const config = ctx?.pluginConfig ?? event.context?.pluginConfig;
         if (config?.enabled === false) return;
         if (!await ensureInitialized(config)) return;
 
-        const text = typeof event.content === 'string'
-          ? event.content
-          : event.content?.text || event.content?.body || '';
+        const text = extractEventText(event);
 
         if (!text || text.length < 3) return;
 
@@ -366,13 +536,14 @@ const _plugin = definePluginEntry({
         const msgContext: MessageContext = {
           message: text,
           senderId: event.senderId || 'unknown',
-          senderName: event.senderName || 'User',
+          senderName: event.senderName || event.from || 'User',
           timestamp: new Date().toISOString(),
-          sessionId: event.sessionKey || '',
+          sessionId: resolveSessionKey(event, ctx),
+          metadata: event.metadata,
         };
 
-        // Store for before_prompt_build
-        lastMessageContext = msgContext;
+        // Store for before_prompt_build and post-response consolidation.
+        rememberMessageContext(msgContext, event, ctx);
 
         try {
           // Amygdala: process emotion + threat detection
@@ -470,11 +641,12 @@ const _plugin = definePluginEntry({
     // Post-response: consolidate memory, track skills, process reward
     api.on(
       'message_sent',
-      async (event: any) => {
-        const config = event.context?.pluginConfig;
+      async (event: any, ctx: any) => {
+        const config = ctx?.pluginConfig ?? event.context?.pluginConfig;
         if (config?.enabled === false) return;
         if (!await ensureInitialized(config)) return;
-        if (!lastMessageContext) return;
+        const turnMessageContext = getCachedMessageContext(event, ctx, true);
+        if (!turnMessageContext) return;
 
         const responseText = typeof event.content === 'string'
           ? event.content
@@ -485,34 +657,34 @@ const _plugin = definePluginEntry({
         try {
           // Hippocampus: consolidate memory
           await hippocampus.consolidate({
-            message: lastMessageContext.message,
+            message: turnMessageContext.message,
             response: responseText,
-            senderId: lastMessageContext.senderId,
-            senderName: lastMessageContext.senderName,
-            timestamp: lastMessageContext.timestamp,
+            senderId: turnMessageContext.senderId,
+            senderName: turnMessageContext.senderName,
+            timestamp: turnMessageContext.timestamp,
           });
 
           // Knowledge extraction (structured facts)
-          knowledgeExtractor.extract(lastMessageContext.message, responseText, {
-            senderName: lastMessageContext.senderName,
-            timestamp: lastMessageContext.timestamp,
+          knowledgeExtractor.extract(turnMessageContext.message, responseText, {
+            senderName: turnMessageContext.senderName,
+            timestamp: turnMessageContext.timestamp,
             previousFacts: knowledgeExtractor.getActiveFacts(),
           });
 
           // Lesson learning (detect corrections)
           const lesson = lessonLearner.analyze({
-            userMessage: lastMessageContext.message,
+            userMessage: turnMessageContext.message,
             agentResponse: responseText,
             previousAgentResponse: lastAgentResponse,
-            senderName: lastMessageContext.senderName,
-            timestamp: lastMessageContext.timestamp,
+            senderName: turnMessageContext.senderName,
+            timestamp: turnMessageContext.timestamp,
           });
           if (lesson && config?.logging) {
             console.log(`[AgentBrain] Lesson learned: ${lesson.type} — ${lesson.right.slice(0, 60)}`);
           }
 
           // Detect sentiment for reward
-          const sentiment = amygdala.detectSentiment(lastMessageContext.message);
+          const sentiment = amygdala.detectSentiment(turnMessageContext.message);
           
           // Check if response contains tool error indicators
           const toolErrorPatterns = /timeout|rate.?limit|api.?error|quota|expired|timed out/i;
@@ -523,29 +695,29 @@ const _plugin = definePluginEntry({
 
           // Cerebellum: record skill usage
           if (config?.enableSkillTracking !== false) {
-            const skill = cerebellum.detectSkill(lastMessageContext.message);
+            const skill = cerebellum.detectSkill(turnMessageContext.message);
             if (skill) {
               cerebellum.recordSkillUsage(skill, rewardSignal >= 0);
             }
           }
 
           // Basal Ganglia: process reward signal
-          const skill = cerebellum.detectSkill(lastMessageContext.message);
+          const skill = cerebellum.detectSkill(turnMessageContext.message);
           basalGanglia.processReward({
             timestamp: new Date().toISOString(),
             taskType: skill || 'general',
             signal: rewardSignal,
             source: 'implicit',
-            context: lastMessageContext.message.slice(0, 50),
+            context: turnMessageContext.message.slice(0, 50),
           });
 
           // Anterior Cingulate: reflect on significant tasks
           if (config?.enableReflection !== false) {
-            const classification = thalamus.classify(lastMessageContext);
+            const classification = thalamus.classify(turnMessageContext);
             if (classification.requiresAction || Math.abs(sentiment) > 0.3) {
               cingulate.reflect({
-                taskDescription: lastMessageContext.message.slice(0, 100),
-                userMessage: lastMessageContext.message,
+                taskDescription: turnMessageContext.message.slice(0, 100),
+                userMessage: turnMessageContext.message,
                 agentResponse: responseText,
                 userSentiment: rewardSignal,
                 emotionalState: amygdala.getState(),
@@ -744,6 +916,26 @@ const _plugin = definePluginEntry({
         }
         const memories = await hippocampus.recall(params.query, params.topic || 'general');
         return { memories, stats: hippocampus.getStats() };
+      },
+    });
+
+    api.registerTool({
+      name: 'agentbrain_graph',
+      description: 'Query AgentBrain graph entities and relationships',
+      parameters: {
+        type: 'object',
+        properties: {
+          entity: { type: 'string', description: 'Entity name or graph search query' },
+          maxHops: { type: 'number', description: 'Relationship traversal depth' },
+        },
+        required: ['entity'],
+      },
+      execute: async (_id: string, params: any, ctx: any) => {
+        if (!await ensureInitialized(ctx?.pluginConfig)) {
+          return { error: 'AgentBrain not initialized' };
+        }
+        const graph = hippocampus.recallGraph(params.entity, params.maxHops || 1);
+        return { graph, stats: hippocampus.getStats() };
       },
     });
 

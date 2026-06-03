@@ -14,6 +14,8 @@ import { Memory } from '../index.js';
 import { BrainFileManager } from '../storage/md-writer.js';
 import { SqlStorageAdapter } from '../storage/sql-adapter.js';
 import { VectorMemory } from './vector-memory.js';
+import { GraphMemory, GraphRecallResult } from './graph-memory.js';
+import { ExtractionResult, KnowledgeExtractor } from './knowledge-extractor.js';
 
 export interface ConversationTurn {
   message: string;
@@ -30,6 +32,14 @@ export interface MemoryCandidate {
   importance: number; // 0-1
 }
 
+export interface RecallOptions {
+  topic?: string;
+  limit?: number;
+  includeGraph?: boolean;
+  relationshipDepth?: number;
+  useVector?: boolean;
+}
+
 export class Hippocampus {
   private config: BrainConfig;
   private fileManager: BrainFileManager | SqlStorageAdapter;
@@ -37,6 +47,8 @@ export class Hippocampus {
   private memories: Memory[] = [];
   private heartbeatCount: number = 0;
   private vectorMemory: VectorMemory;
+  private graphMemory: GraphMemory | null = null;
+  private knowledgeExtractor = new KnowledgeExtractor();
 
   constructor(config: BrainConfig, fileManager: BrainFileManager | SqlStorageAdapter) {
     this.config = config;
@@ -44,10 +56,11 @@ export class Hippocampus {
     
     // Get BrainDatabase instance if using SqlStorageAdapter
     const brainDb = fileManager instanceof SqlStorageAdapter ? fileManager.getDatabase() : undefined;
+    this.graphMemory = brainDb ? new GraphMemory(brainDb) : null;
     
     this.vectorMemory = new VectorMemory({
       dbPath: `${config.brainDir}/vector.db`,
-      dims: 768,
+      dims: 1024,
       maxResults: config.maxRecallResults,
       minSimilarity: 0.25,
     }, brainDb);
@@ -67,9 +80,19 @@ export class Hippocampus {
   /**
    * Recall relevant memories using vector similarity + keyword hybrid
    */
-  async recall(query: string, topic: string): Promise<Memory[]> {
-    // Primary: vector-based semantic recall
-    const vectorResults = await this.vectorMemory.recall(query, this.memories, topic);
+  async recall(query: string, topicOrOptions: string | RecallOptions = 'general'): Promise<Memory[]> {
+    const options: RecallOptions = typeof topicOrOptions === 'string'
+      ? { topic: topicOrOptions }
+      : topicOrOptions;
+    const topic = options.topic || 'general';
+    const limit = options.limit || this.config.maxRecallResults;
+
+    // Primary: vector-based semantic recall, unless the caller needs a fast
+    // prompt-injection path that must never wait on embedding downloads.
+    const vectorResults = options.useVector === false
+      ? []
+      : await this.vectorMemory.recall(query, this.memories, topic);
+    let recalled: Memory[];
 
     if (vectorResults.length > 0) {
       // Update access metadata only for high-scoring results
@@ -79,11 +102,34 @@ export class Hippocampus {
           result.memory.lastAccessed = new Date().toISOString();
         }
       }
-      return vectorResults.map(r => r.memory);
+      recalled = vectorResults.map(r => r.memory);
+    } else {
+      // Fallback: keyword-based recall (for when vector search returns nothing)
+      recalled = this.keywordRecall(query, topic);
     }
 
-    // Fallback: keyword-based recall (for when vector search returns nothing)
-    return this.keywordRecall(query, topic);
+    if (this.graphMemory && options.includeGraph !== false) {
+      const graph = this.graphMemory.recall(query, {
+        maxHops: options.relationshipDepth ?? 1,
+        limit,
+      });
+      recalled = this.mergeGraphContext(recalled, graph, limit);
+    }
+
+    return recalled.slice(0, limit);
+  }
+
+  recallGraph(entityName: string, maxHops: number = 1): GraphRecallResult | null {
+    return this.graphMemory?.recallEntity(entityName, maxHops) || null;
+  }
+
+  rememberKnowledge(extraction: ExtractionResult, timestamp: string, sourceMemoryId?: string): { entities: number; relationships: number } {
+    if (!this.graphMemory) return { entities: 0, relationships: 0 };
+    return this.graphMemory.rememberKnowledge({
+      extraction,
+      timestamp,
+      sourceMemoryId,
+    });
   }
 
   /**
@@ -123,6 +169,11 @@ export class Hippocampus {
 
     // Extract memory candidates from the turn
     const candidates = this.extractMemoryCandidates(turn);
+    const extractedKnowledge = this.knowledgeExtractor.extract(turn.message, turn.response, {
+      senderName: turn.senderName,
+      timestamp: turn.timestamp,
+      previousFacts: this.knowledgeExtractor.getActiveFacts(),
+    });
 
     // Dedup candidates: keep highest importance per unique content
     const dedupMap = new Map<string, MemoryCandidate>();
@@ -140,6 +191,7 @@ export class Hippocampus {
       }
     }
 
+    let firstMemoryId: string | undefined;
     for (const candidate of dedupMap.values()) {
       // Check if similar memory already exists (prevent cross-session duplicates)
       const isDuplicate = this.memories.some(m =>
@@ -159,8 +211,23 @@ export class Hippocampus {
       };
 
       this.memories.push(memory);
+      firstMemoryId ||= memory.id;
       // Index new memory into vector store
       await this.vectorMemory.indexMemory(memory);
+    }
+
+    if (this.graphMemory) {
+      this.graphMemory.rememberKnowledge({
+        extraction: extractedKnowledge,
+        timestamp: turn.timestamp,
+        sourceMemoryId: firstMemoryId,
+      });
+      this.graphMemory.rememberConversationTurn({
+        message: turn.message,
+        response: turn.response,
+        timestamp: turn.timestamp,
+        entityNames: extractedKnowledge.entities.map(entity => entity.name),
+      });
     }
 
     // Persist if buffer is getting large
@@ -254,6 +321,32 @@ export class Hippocampus {
     }
 
     return candidates;
+  }
+
+  private mergeGraphContext(memories: Memory[], graph: GraphRecallResult, limit: number): Memory[] {
+    if (graph.context.length === 0) return memories;
+
+    const existing = new Set(memories.map(memory => memory.content));
+    const graphMemories: Memory[] = [];
+    const now = new Date().toISOString();
+
+    graph.context.slice(0, Math.max(1, limit - memories.length)).forEach((line, index) => {
+      const content = `[Graph] ${line}`;
+      if (existing.has(content)) return;
+
+      graphMemories.push({
+        id: `graph-${Date.now().toString(36)}-${index}`,
+        type: 'semantic',
+        content,
+        timestamp: now,
+        confidence: 0.55,
+        accessCount: 0,
+        lastAccessed: now,
+        tags: ['graph', 'relationship'],
+      });
+    });
+
+    return [...memories, ...graphMemories];
   }
 
   /**
@@ -359,14 +452,25 @@ export class Hippocampus {
   /**
    * Get memory stats
    */
-  getStats(): { total: number; episodic: number; semantic: number; procedural: number; vectorIndexed: number } {
+  getStats(): {
+    total: number;
+    episodic: number;
+    semantic: number;
+    procedural: number;
+    vectorIndexed: number;
+    graphEntities: number;
+    graphRelationships: number;
+  } {
     const vectorStats = this.vectorMemory.getStats();
+    const graphStats = this.graphMemory?.getStats();
     return {
       total: this.memories.length,
       episodic: this.memories.filter(m => m.type === 'episodic').length,
       semantic: this.memories.filter(m => m.type === 'semantic').length,
       procedural: this.memories.filter(m => m.type === 'procedural').length,
       vectorIndexed: vectorStats.indexed,
+      graphEntities: graphStats?.entities || 0,
+      graphRelationships: graphStats?.relationships || 0,
     };
   }
 

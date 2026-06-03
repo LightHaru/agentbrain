@@ -63,9 +63,16 @@
       "maxInjectionTokens": {
         "type": "integer",
         "description": "Maximum tokens for brain context injection",
-        "default": 250,
-        "minimum": 50,
-        "maximum": 500
+        "default": 450,
+        "minimum": 120,
+        "maximum": 800
+      },
+      "graphRecallDepth": {
+        "type": "integer",
+        "description": "Relationship hops to include from AgentBrain graph memory during prompt injection",
+        "default": 2,
+        "minimum": 0,
+        "maximum": 3
       },
       "maintenanceInterval": {
         "type": "integer",
@@ -93,6 +100,7 @@
       "agentbrain_emotions",
       "agentbrain_skills",
       "agentbrain_memories",
+      "agentbrain_graph",
       "agentbrain_reflect",
       "agentbrain_template_apply",
       "agentbrain_template_list",

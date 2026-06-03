@@ -31,6 +31,19 @@ export interface Fact {
   validUntil?: string; // When this fact stopped being true (null = still valid)
 }
 
+export interface KnowledgeRelationship {
+  from: string;
+  to: string;
+  type: string;
+  confidence: number;
+  source: Fact['source'];
+  fromType?: Entity['type'];
+  toType?: Entity['type'];
+  properties?: Record<string, unknown>;
+  validFrom?: string;
+  validUntil?: string;
+}
+
 export interface ProceduralMemory {
   id: string;
   type: 'source_routing' | 'workflow' | 'shortcut';
@@ -53,6 +66,7 @@ export interface Correction {
 export interface ExtractionResult {
   entities: Entity[];
   facts: Fact[];
+  relationships: KnowledgeRelationship[];
   corrections: Correction[];
   proceduralMemories: ProceduralMemory[];
   summary: string; // One-line summary of what was learned
@@ -94,6 +108,7 @@ export class KnowledgeExtractor {
     const result: ExtractionResult = {
       entities: [],
       facts: [],
+      relationships: [],
       corrections: [],
       proceduralMemories: [],
       summary: '',
@@ -259,6 +274,22 @@ export class KnowledgeExtractor {
 
           if (!exists) {
             result.facts.push(fact);
+            const fromType = this.guessEntityType(fact.subject);
+            const toType = this.guessEntityType(fact.object);
+            this.addEntityIfMissing(result, fact.subject, fromType, context.timestamp);
+            this.addEntityIfMissing(result, fact.object, toType, context.timestamp);
+            result.relationships.push({
+              from: fact.subject,
+              to: fact.object,
+              type: fact.relation,
+              confidence: fact.confidence,
+              source,
+              fromType,
+              toType,
+              properties: { factId: fact.id },
+              validFrom: fact.validFrom,
+              validUntil: fact.validUntil,
+            });
           }
         }
       }
@@ -300,6 +331,22 @@ export class KnowledgeExtractor {
     return { name, type, aliases: [], firstSeen: timestamp, lastSeen: timestamp };
   }
 
+  private addEntityIfMissing(result: ExtractionResult, name: string, type: Entity['type'], timestamp: string): void {
+    const normalized = name.toLowerCase();
+    const existsInResult = result.entities.some(e => e.name.toLowerCase() === normalized && e.type === type);
+    if (existsInResult) return;
+    result.entities.push(this.makeEntity(name, type, timestamp));
+  }
+
+  private guessEntityType(value: string): Entity['type'] {
+    if (/^0x[a-fA-F0-9]{40}$|^prl1[a-z0-9]{20,}/i.test(value)) return 'address';
+    if (/^\$?\d+(?:\.\d+)?\s*(TH\/s|GH\/s|PRL|USD|USDT|GB|TB|ETH|SOL|BTC)?$/i.test(value)) return 'number';
+    if (/server|api|gateway|service|dashboard|plugin/i.test(value)) return 'service';
+    if (/agentbrain|memory-graph|openclaw|typescript|javascript|cursor|vscode/i.test(value)) return 'tool';
+    if (/project|repo|site|tingamefi|airacm/i.test(value)) return 'project';
+    return 'concept';
+  }
+
   private detectCorrections(result: ExtractionResult): void {
     for (const newFact of result.facts) {
       // Find existing facts with same subject+relation but different object
@@ -330,6 +377,9 @@ export class KnowledgeExtractor {
     }
     if (result.facts.length > 0) {
       parts.push(`${result.facts.length} facts`);
+    }
+    if (result.relationships.length > 0) {
+      parts.push(`${result.relationships.length} relationships`);
     }
     if (result.corrections.length > 0) {
       parts.push(`${result.corrections.length} corrections`);

@@ -16,6 +16,7 @@
 
 import { createAgentBrain, AgentBrainPlugin, MessageContext, BrainContext } from '../index.js';
 import { BrainConfig, defaultConfig } from '../core/config.js';
+import { Hippocampus } from '../core/hippocampus.js';
 import { Amygdala } from '../core/amygdala.js';
 import { AnteriorCingulate } from '../core/cingulate.js';
 import { Cerebellum } from '../core/cerebellum.js';
@@ -147,6 +148,8 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
       // Initialize core brain (Thalamus + Hippocampus)
       brain = createAgentBrain(finalConfig);
       await brain.initialize();
+      brain.hippocampus = new Hippocampus(finalConfig, storage as any);
+      await brain.hippocampus.initialize();
 
       // Initialize Phase 2 modules
       amygdala = new Amygdala(finalConfig, storage);
@@ -248,8 +251,9 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
         : context.message;
       const relevantMemories = await brain.hippocampus.recall(
         recallQuery,
-        classification.topic
+        { topic: classification.topic, relationshipDepth: 2 }
       );
+      const graphRecall = brain.hippocampus.recallGraph(recallQuery, 2);
 
       // Step 6: Amygdala processes emotion + threat
       const emotionalResult = amygdala.process(msgContext);
@@ -304,11 +308,13 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
 
       // Step 13: Build injection context
       const injectionContext: InjectionContext = {
+        currentMessage: context.message,
         classification,
         emotionalState: emotionalResult.updatedState,
         personality: cingulate.getPersonality(),
         relationship: relationship || null,
         relevantMemories,
+        graphContext: graphRecall?.context || [],
         topSkills: cerebellum.getTopSkills(3),
         activeHabits: cerebellum.getActiveHabits(),
         workingMemory: prefrontal.getWorkingMemory(),

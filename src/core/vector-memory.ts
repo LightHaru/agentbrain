@@ -165,7 +165,7 @@ export class VectorMemory {
       openclawDbPath: config.openclawDbPath || join(
         process.env.HOME || '~', '.openclaw/memory/main.sqlite'
       ),
-      dims: config.dims || 768,
+      dims: config.dims || 1024,
       maxResults: config.maxResults || 10,
       minSimilarity: config.minSimilarity || 0.3,
     };

@@ -41,10 +41,12 @@ facebook-post.txt
 
 # Dev-only — kept local, excluded from the published plugin repo
 test/
-tests/
+tests/*
+!tests/graph-memory.test.ts
 demo/
 dashboard/
-scripts/
+scripts/*
+!scripts/migrate-memory-graph.mjs
 snapshots/
 templates/
 vitest.config.ts

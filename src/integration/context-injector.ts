@@ -2,16 +2,15 @@
  * Brain Context Injector
  * 
  * Formats brain state into a compact, injectable prompt section.
- * Designed to add ~150-250 tokens of enriched context per turn.
+ * Designed to add ~250-450 tokens of enriched context per turn.
  * 
  * Output format:
  * ```
- * ## Brain State (AgentBrain — auto-injected)
- * - Mood: content | Valence: 0.3 | Arousal: 0.2
- * - Relationship: depth 45/100, trust 72/100
- * - Top skills: research (85), crypto-analysis (70)
- * - Recent habit: Sếp hay hỏi crypto buổi trưa
- * - Relevant memories: [max 5 items]
+ * ## AgentBrain Recall (auto-injected)
+ * Use as private turn context. This context is already available; no AgentBrain tool call is required.
+ * Current ask: ...
+ * Turn: intent=action_request | topic=coding | urgency=medium | tone=neutral
+ * ...
  * ```
  */
 
@@ -23,11 +22,13 @@ import { WorkingMemoryItem } from '../core/prefrontal.js';
 import { PriorityEnforcer } from './priority-enforcer.js';
 
 export interface InjectionContext {
+  currentMessage?: string;
   classification: MessageClassification;
   emotionalState: EmotionalState;
   personality: PersonalityTraits;
   relationship: RelationshipState | null;
   relevantMemories: Memory[];
+  graphContext?: string[];
   topSkills: Skill[];
   activeHabits: Habit[];
   workingMemory: WorkingMemoryItem[];
@@ -54,7 +55,7 @@ export interface InjectionOptions {
 }
 
 const DEFAULT_OPTIONS: InjectionOptions = {
-  maxTokens: 250,
+  maxTokens: 450,
   includePersonality: true,
   includeEmotions: true,
   includeMemories: true,
@@ -76,7 +77,15 @@ export class ContextInjector {
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const lines: string[] = [];
 
-    lines.push('## Brain State (AgentBrain — auto-injected)');
+    lines.push('## AgentBrain Recall (auto-injected)');
+    lines.push('Use as private turn context. This context is already available; no AgentBrain tool call is required.');
+
+    if (context.currentMessage) {
+      lines.push(`Current ask: ${this.shorten(context.currentMessage, 180)}`);
+    }
+
+    const turn = context.classification;
+    lines.push(`Turn: intent=${turn.intent} | topic=${turn.topic} | urgency=${turn.urgency} | tone=${turn.emotionalTone}`);
 
     // Emotional state (compact)
     if (opts.includeEmotions) {
@@ -95,6 +104,24 @@ export class ContextInjector {
       const notable = this.getNotableTraits(context.personality);
       if (notable.length > 0) {
         lines.push(`Personality: ${notable.join(', ')}`);
+      }
+    }
+
+    // Graph memory (entity/relationship context from AgentBrain's merged graph)
+    if (opts.includeMemories && context.graphContext && context.graphContext.length > 0) {
+      const graphContext = this.filterGraphContext(context.graphContext);
+      lines.push('Graph memory:');
+      for (const item of graphContext.slice(0, 8)) {
+        lines.push(`  ${this.shorten(item, 120)}`);
+      }
+    }
+
+    // Relevant memories (compact)
+    if (opts.includeMemories && context.relevantMemories.length > 0) {
+      lines.push('Relevant memories:');
+      for (const mem of context.relevantMemories.slice(0, 4)) {
+        const shortContent = this.shorten(mem.content, 120);
+        lines.push(`  [${mem.type}] ${shortContent} (conf: ${mem.confidence.toFixed(2)})`);
       }
     }
 
@@ -120,15 +147,6 @@ export class ContextInjector {
         .map(w => w.content.slice(0, 60))
         .join('; ');
       lines.push(`Working memory: ${wmStr}`);
-    }
-
-    // Relevant memories (compact)
-    if (opts.includeMemories && context.relevantMemories.length > 0) {
-      lines.push('Relevant memories:');
-      for (const mem of context.relevantMemories.slice(0, 5)) {
-        const shortContent = mem.content.slice(0, 80);
-        lines.push(`  [${mem.type}] ${shortContent} (conf: ${mem.confidence.toFixed(2)})`);
-      }
     }
 
     // Reward trend
@@ -167,6 +185,16 @@ export class ContextInjector {
     }
 
     return result;
+  }
+
+  private shorten(value: string, maxChars: number): string {
+    const compact = value.replace(/\s+/g, ' ').trim();
+    if (compact.length <= maxChars) return compact;
+    return `${compact.slice(0, Math.max(0, maxChars - 3)).trim()}...`;
+  }
+
+  private filterGraphContext(items: string[]): string[] {
+    return items.filter(item => !/(^|\/|\s)memory-graph\.db\b|agent-memory-graph|plugin-memory-graph|@openclaw\/plugin-memory-graph/i.test(item));
   }
 
   /**

@@ -29,6 +29,7 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "migrate:memory-graph": "node scripts/migrate-memory-graph.mjs",
     "lint": "eslint src/",
     "clean": "rm -rf dist/"
   },

@@ -53,6 +53,40 @@ export interface EntityRow {
   last_seen: string;
 }
 
+export interface GraphEntityRow {
+  id: string;
+  name: string;
+  type: string;
+  properties: string; // JSON object
+  first_seen: string;
+  last_seen: string;
+  mention_count: number;
+  confidence: number;
+  embedding: Buffer | null;
+  vector_size: number;
+}
+
+export interface GraphRelationshipRow {
+  id: string;
+  from_entity_id: string;
+  to_entity_id: string;
+  relation_type: string;
+  properties: string; // JSON object
+  confidence: number;
+  first_seen: string;
+  last_seen: string;
+  valid_until: string | null;
+  source_memory_id: string | null;
+}
+
+export interface GraphConversationRow {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  entities: string; // JSON array
+}
+
 export interface LessonRow {
   id: string;
   type: string;
@@ -289,6 +323,65 @@ export class BrainDatabase {
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS graph_entities (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'concept',
+        properties TEXT NOT NULL DEFAULT '{}',
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        mention_count INTEGER NOT NULL DEFAULT 1,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        embedding BLOB,
+        vector_size INTEGER NOT NULL DEFAULT 1024,
+        UNIQUE(name, type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_entities_name ON graph_entities(name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_graph_entities_type ON graph_entities(type);
+      CREATE INDEX IF NOT EXISTS idx_graph_entities_seen ON graph_entities(last_seen);
+
+      CREATE TABLE IF NOT EXISTS graph_relationships (
+        id TEXT PRIMARY KEY,
+        from_entity_id TEXT NOT NULL,
+        to_entity_id TEXT NOT NULL,
+        relation_type TEXT NOT NULL,
+        properties TEXT NOT NULL DEFAULT '{}',
+        confidence REAL NOT NULL DEFAULT 0.7,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        valid_until TEXT DEFAULT NULL,
+        source_memory_id TEXT DEFAULT NULL,
+        FOREIGN KEY(from_entity_id) REFERENCES graph_entities(id) ON DELETE CASCADE,
+        FOREIGN KEY(to_entity_id) REFERENCES graph_entities(id) ON DELETE CASCADE,
+        UNIQUE(from_entity_id, to_entity_id, relation_type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_relationships_from ON graph_relationships(from_entity_id);
+      CREATE INDEX IF NOT EXISTS idx_graph_relationships_to ON graph_relationships(to_entity_id);
+      CREATE INDEX IF NOT EXISTS idx_graph_relationships_type ON graph_relationships(relation_type);
+      CREATE INDEX IF NOT EXISTS idx_graph_relationships_valid ON graph_relationships(valid_until);
+
+      CREATE TABLE IF NOT EXISTS graph_conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        entities TEXT NOT NULL DEFAULT '[]'
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_conversations_timestamp ON graph_conversations(timestamp DESC);
+
+      CREATE TABLE IF NOT EXISTS embeddings (
+        id TEXT PRIMARY KEY,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        vector_size INTEGER NOT NULL DEFAULT 1024,
+        embedding BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(owner_type, owner_id, model)
+      );
+      CREATE INDEX IF NOT EXISTS idx_embeddings_owner ON embeddings(owner_type, owner_id);
+
       -- FTS5 virtual table for BM25 search
       CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
         content,
@@ -483,6 +576,197 @@ export class BrainDatabase {
       return this.db.prepare('SELECT * FROM entities WHERE type = ? ORDER BY last_seen DESC').all(type) as EntityRow[];
     }
     return this.db.prepare('SELECT * FROM entities ORDER BY last_seen DESC').all() as EntityRow[];
+  }
+
+  // ==========================================================================
+  // Graph Memory
+  // ==========================================================================
+
+  upsertGraphEntity(entity: {
+    name: string;
+    type?: string;
+    properties?: Record<string, unknown>;
+    timestamp: string;
+    confidence?: number;
+    embedding?: Buffer | null;
+    vectorSize?: number;
+  }): string {
+    const type = entity.type || 'concept';
+    const id = `gent-${this.hashContent(`${type}:${entity.name}`).slice(0, 18)}`;
+    const properties = JSON.stringify(entity.properties || {});
+    const confidence = entity.confidence ?? 0.7;
+    const vectorSize = entity.vectorSize ?? 1024;
+
+    this.db.prepare(`
+      INSERT INTO graph_entities (id, name, type, properties, first_seen, last_seen, mention_count, confidence, embedding, vector_size)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      ON CONFLICT(name, type) DO UPDATE SET
+        properties = excluded.properties,
+        last_seen = excluded.last_seen,
+        mention_count = graph_entities.mention_count + 1,
+        confidence = MAX(graph_entities.confidence, excluded.confidence),
+        embedding = COALESCE(excluded.embedding, graph_entities.embedding),
+        vector_size = COALESCE(excluded.vector_size, graph_entities.vector_size)
+    `).run(
+      id,
+      entity.name,
+      type,
+      properties,
+      entity.timestamp,
+      entity.timestamp,
+      confidence,
+      entity.embedding || null,
+      vectorSize
+    );
+
+    const row = this.db.prepare(`
+      SELECT id FROM graph_entities WHERE name = ? AND type = ?
+    `).get(entity.name, type) as { id: string };
+    return row.id;
+  }
+
+  getGraphEntity(id: string): GraphEntityRow | undefined {
+    return this.db.prepare('SELECT * FROM graph_entities WHERE id = ?').get(id) as GraphEntityRow | undefined;
+  }
+
+  getGraphEntityByName(name: string, type?: string): GraphEntityRow | undefined {
+    if (type) {
+      return this.db.prepare(`
+        SELECT * FROM graph_entities WHERE lower(name) = lower(?) AND type = ?
+      `).get(name, type) as GraphEntityRow | undefined;
+    }
+    return this.db.prepare(`
+      SELECT * FROM graph_entities WHERE lower(name) = lower(?) ORDER BY confidence DESC, mention_count DESC LIMIT 1
+    `).get(name) as GraphEntityRow | undefined;
+  }
+
+  getGraphEntities(limit: number = 100): GraphEntityRow[] {
+    return this.db.prepare(`
+      SELECT * FROM graph_entities ORDER BY mention_count DESC, last_seen DESC LIMIT ?
+    `).all(limit) as GraphEntityRow[];
+  }
+
+  searchGraphEntities(query: string, limit: number = 25): GraphEntityRow[] {
+    const terms = query
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}_-]+/u)
+      .filter(term => term.length > 1)
+      .slice(0, 8);
+
+    if (terms.length === 0) return [];
+
+    const clauses = terms.map(() => `
+      lower(name) LIKE ?
+      OR lower(type) LIKE ?
+      OR lower(properties) LIKE ?
+    `);
+    const params = terms.flatMap(term => [`%${term}%`, `%${term}%`, `%${term}%`]);
+    params.push(limit as any);
+
+    return this.db.prepare(`
+      SELECT * FROM graph_entities
+      WHERE ${clauses.map(c => `(${c})`).join(' OR ')}
+      ORDER BY confidence DESC, mention_count DESC, last_seen DESC
+      LIMIT ?
+    `).all(...params) as GraphEntityRow[];
+  }
+
+  upsertGraphRelationship(rel: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    properties?: Record<string, unknown>;
+    confidence?: number;
+    timestamp: string;
+    validUntil?: string | null;
+    sourceMemoryId?: string | null;
+  }): string {
+    const id = `grel-${this.hashContent(`${rel.fromEntityId}:${rel.type}:${rel.toEntityId}`).slice(0, 18)}`;
+    const properties = JSON.stringify(rel.properties || {});
+
+    this.db.prepare(`
+      INSERT INTO graph_relationships (
+        id, from_entity_id, to_entity_id, relation_type, properties, confidence,
+        first_seen, last_seen, valid_until, source_memory_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(from_entity_id, to_entity_id, relation_type) DO UPDATE SET
+        properties = excluded.properties,
+        confidence = MAX(graph_relationships.confidence, excluded.confidence),
+        last_seen = excluded.last_seen,
+        valid_until = excluded.valid_until,
+        source_memory_id = COALESCE(excluded.source_memory_id, graph_relationships.source_memory_id)
+    `).run(
+      id,
+      rel.fromEntityId,
+      rel.toEntityId,
+      rel.type,
+      properties,
+      rel.confidence ?? 0.7,
+      rel.timestamp,
+      rel.timestamp,
+      rel.validUntil || null,
+      rel.sourceMemoryId || null
+    );
+
+    const row = this.db.prepare(`
+      SELECT id FROM graph_relationships
+      WHERE from_entity_id = ? AND to_entity_id = ? AND relation_type = ?
+    `).get(rel.fromEntityId, rel.toEntityId, rel.type) as { id: string };
+    return row.id;
+  }
+
+  getGraphRelationships(entityId: string, activeAt?: string): GraphRelationshipRow[] {
+    if (activeAt) {
+      return this.db.prepare(`
+        SELECT * FROM graph_relationships
+        WHERE (from_entity_id = ? OR to_entity_id = ?)
+          AND first_seen <= ?
+          AND (valid_until IS NULL OR valid_until > ?)
+        ORDER BY confidence DESC, last_seen DESC
+      `).all(entityId, entityId, activeAt, activeAt) as GraphRelationshipRow[];
+    }
+
+    return this.db.prepare(`
+      SELECT * FROM graph_relationships
+      WHERE (from_entity_id = ? OR to_entity_id = ?)
+        AND valid_until IS NULL
+      ORDER BY confidence DESC, last_seen DESC
+    `).all(entityId, entityId) as GraphRelationshipRow[];
+  }
+
+  getAllGraphRelationships(limit: number = 100): GraphRelationshipRow[] {
+    return this.db.prepare(`
+      SELECT * FROM graph_relationships
+      WHERE valid_until IS NULL
+      ORDER BY confidence DESC, last_seen DESC
+      LIMIT ?
+    `).all(limit) as GraphRelationshipRow[];
+  }
+
+  addGraphConversation(message: {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+    entities?: string[];
+  }): void {
+    this.db.prepare(`
+      INSERT INTO graph_conversations (role, content, timestamp, entities)
+      VALUES (?, ?, ?, ?)
+    `).run(message.role, message.content, message.timestamp, JSON.stringify(message.entities || []));
+  }
+
+  getGraphConversationWindow(size: number = 12): GraphConversationRow[] {
+    return this.db.prepare(`
+      SELECT * FROM graph_conversations ORDER BY timestamp DESC LIMIT ?
+    `).all(size).reverse() as GraphConversationRow[];
+  }
+
+  getGraphStats(): { entities: number; relationships: number; conversations: number } {
+    const entities = (this.db.prepare('SELECT COUNT(*) as count FROM graph_entities').get() as any).count as number;
+    const relationships = (this.db.prepare('SELECT COUNT(*) as count FROM graph_relationships').get() as any).count as number;
+    const conversations = (this.db.prepare('SELECT COUNT(*) as count FROM graph_conversations').get() as any).count as number;
+    return { entities, relationships, conversations };
   }
 
   // ==========================================================================

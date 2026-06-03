@@ -19,6 +19,7 @@ import { Metacognition } from './core/metacognition.js';
 // Core modules (v1.0)
 export { Thalamus } from './core/thalamus.js';
 export { Hippocampus } from './core/hippocampus.js';
+export { GraphMemory } from './core/graph-memory.js';
 export { Amygdala } from './core/amygdala.js';
 export { AnteriorCingulate } from './core/cingulate.js';
 export { Cerebellum } from './core/cerebellum.js';

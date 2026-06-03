@@ -2,7 +2,7 @@
  * Embedding Engine — Local Transformers.js embeddings
  * 
  * Uses @huggingface/transformers to generate embeddings locally.
- * Model: Xenova/all-MiniLM-L6-v2 (22MB, 384 dimensions)
+ * Model: Xenova/multilingual-e5-large (1024 dimensions)
  * 
  * Features:
  * - Lazy model loading (doesn't block plugin init)
@@ -42,8 +42,8 @@ export class EmbeddingEngine {
 
   constructor(config: Partial<EmbeddingEngineConfig> = {}) {
     this.config = {
-      modelId: config.modelId || 'Xenova/all-MiniLM-L6-v2',
-      dims: config.dims || 384,
+      modelId: config.modelId || 'Xenova/multilingual-e5-large',
+      dims: config.dims || 1024,
       maxBatchSize: config.maxBatchSize || 32,
     };
   }
@@ -162,6 +162,12 @@ export class EmbeddingEngine {
    * Load the model
    */
   private async loadModel(): Promise<void> {
+    if (process.env.AGENTBRAIN_DISABLE_TRANSFORMERS === '1' || process.env.NODE_ENV === 'test') {
+      this.loadFailed = true;
+      this.pipeline = null;
+      return;
+    }
+
     try {
       console.log(`[EmbeddingEngine] Loading model ${this.config.modelId}...`);
       
