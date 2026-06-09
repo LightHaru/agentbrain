@@ -1,6 +1,6 @@
 {
-  "id": "agentbrain",
-  "name": "@klsgg/agentbrain",
+  "id": "lightharu-agentbrain",
+  "name": "@lightharu/agentbrain",
   "kind": "plugin",
   "description": "Brain-inspired cognitive architecture. Self-evolving personality, memory, emotions, skill learning, and reward adaptation. Injects brain context into every prompt.",
   "activation": {
