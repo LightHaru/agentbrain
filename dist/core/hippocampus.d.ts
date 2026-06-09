@@ -11,6 +11,7 @@
 import { BrainConfig } from './config.js';
 import { Memory } from '../index.js';
 import { BrainFileManager } from '../storage/md-writer.js';
+import { SqlStorageAdapter } from '../storage/sql-adapter.js';
 export interface ConversationTurn {
     message: string;
     response: string;
@@ -30,15 +31,25 @@ export declare class Hippocampus {
     private shortTermBuffer;
     private memories;
     private heartbeatCount;
-    constructor(config: BrainConfig, fileManager: BrainFileManager);
+    private vectorMemory;
+    constructor(config: BrainConfig, fileManager: BrainFileManager | SqlStorageAdapter);
     /**
      * Initialize: load existing memories from brain files
      */
     initialize(): Promise<void>;
     /**
-     * Recall relevant memories for a given query/topic
+     * Recall relevant memories using vector similarity + keyword hybrid
+     * Phase 3 enhancement: filter by task-type tags to reduce noise
      */
     recall(query: string, topic: string): Promise<Memory[]>;
+    /**
+     * Detect task type from query/topic for targeted recall
+     */
+    private detectTaskType;
+    /**
+     * Fallback keyword-based recall
+     */
+    private keywordRecall;
     /**
      * Consolidate a conversation turn into memory
      */
@@ -79,6 +90,11 @@ export declare class Hippocampus {
         episodic: number;
         semantic: number;
         procedural: number;
+        vectorIndexed: number;
     };
+    /**
+     * Shutdown: close vector DB
+     */
+    shutdown(): Promise<void>;
 }
 //# sourceMappingURL=hippocampus.d.ts.map

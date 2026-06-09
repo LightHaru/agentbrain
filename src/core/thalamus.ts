@@ -13,12 +13,13 @@ import { MessageContext, MessageClassification } from '../index.js';
 /** Keywords that signal high urgency */
 const URGENCY_KEYWORDS = {
   critical: ['scam', 'hack', 'drain', 'rug', 'emergency', 'urgent', 'mất tiền', 'bị hack', 'khẩn cấp'],
-  high: ['bug', 'lỗi', 'fix', 'broken', 'down', 'crash', 'deploy', 'production', 'deadline'],
+  high: ['bug', 'lỗi', 'fix', 'broken', 'down', 'crash', 'deploy', 'production', 'deadline', 'gấp', 'nhanh', 'ngay', 'liền'],
   medium: ['help', 'giúp', 'check', 'review', 'làm', 'tạo', 'build', 'code', 'write'],
 };
 
 /** Topic classification patterns */
 const TOPIC_PATTERNS: Record<string, RegExp[]> = {
+  'status-check': [/xong.*chưa|đâu.*rồi|tới.*đâu|sao.*rồi|progress|status|thế.*nào.*rồi/i],
   crypto: [/token|coin|swap|defi|nft|wallet|ví|trade|long|short|leverage/i],
   coding: [/code|bug|fix|deploy|api|server|database|function|component|build/i],
   content: [/bài|viết|blog|seo|content|article|post|tweet|thread/i],
@@ -73,8 +74,16 @@ export class Thalamus {
 
   /**
    * Detect urgency level
+   * Phase 4: status-check questions default to 'medium', not high
    */
   private detectUrgency(msg: string): 'low' | 'medium' | 'high' | 'critical' {
+    // Status check questions are medium by default (not urgent)
+    if (/xong.*chưa|đâu.*rồi|tới.*đâu|sao.*rồi|thế.*nào.*rồi/i.test(msg)) {
+      // Unless explicit urgency markers present
+      if (/gấp|nhanh|ngay|liền|asap/i.test(msg)) return 'high';
+      return 'medium';
+    }
+
     for (const keyword of URGENCY_KEYWORDS.critical) {
       if (msg.includes(keyword)) return 'critical';
     }

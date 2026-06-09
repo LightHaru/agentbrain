@@ -26,12 +26,21 @@ const prefrontal_js_1 = require("../core/prefrontal.js");
 const priority_enforcer_js_1 = require("./priority-enforcer.js");
 const context_injector_js_1 = require("./context-injector.js");
 const md_writer_js_1 = require("../storage/md-writer.js");
+const sql_adapter_js_1 = require("../storage/sql-adapter.js");
+const knowledge_extractor_js_1 = require("../core/knowledge-extractor.js");
+const lesson_learner_js_1 = require("../core/lesson-learner.js");
+const personality_influence_js_1 = require("../core/personality-influence.js");
+const proactive_engine_js_1 = require("../core/proactive-engine.js");
 /**
  * Create the OpenClaw plugin instance
  */
 function createOpenClawPlugin(userConfig) {
     const config = { ...config_js_1.defaultConfig, ...userConfig };
     const fileManager = new md_writer_js_1.BrainFileManager(config.brainDir);
+    // Use SQL storage adapter (drop-in replacement for fileManager)
+    const sqlAdapter = new sql_adapter_js_1.SqlStorageAdapter(config.brainDir);
+    // Use sqlAdapter as the primary storage, fileManager as fallback for legacy
+    const storage = sqlAdapter; // implements same interface
     // Core modules (from Phase 1-3)
     let brain;
     let amygdala;
@@ -42,9 +51,15 @@ function createOpenClawPlugin(userConfig) {
     // Phase 4 modules
     const enforcer = new priority_enforcer_js_1.PriorityEnforcer();
     const injector = new context_injector_js_1.ContextInjector(enforcer);
+    // Phase 5 modules (new)
+    const knowledgeExtractor = new knowledge_extractor_js_1.KnowledgeExtractor();
+    const lessonLearner = new lesson_learner_js_1.LessonLearner();
+    let personalityInfluence;
+    const proactiveEngine = new proactive_engine_js_1.ProactiveEngine();
     let initialized = false;
     let interactionCount = 0;
     let startTime = Date.now();
+    let lastAgentResponse = '';
     const manifest = {
         name: 'agentbrain',
         version: '0.2.0',
@@ -64,23 +79,50 @@ function createOpenClawPlugin(userConfig) {
         async initialize(overrideConfig) {
             const finalConfig = { ...config, ...overrideConfig };
             // Initialize file structure
-            await fileManager.ensureBrainStructure();
+            await storage.ensureBrainStructure();
             // Initialize core brain (Thalamus + Hippocampus)
             brain = (0, index_js_1.createAgentBrain)(finalConfig);
             await brain.initialize();
             // Initialize Phase 2 modules
-            amygdala = new amygdala_js_1.Amygdala(finalConfig, fileManager);
+            amygdala = new amygdala_js_1.Amygdala(finalConfig, storage);
             await amygdala.initialize();
-            cingulate = new cingulate_js_1.AnteriorCingulate(finalConfig, fileManager);
+            cingulate = new cingulate_js_1.AnteriorCingulate(finalConfig, storage);
             await cingulate.initialize();
             // Initialize Phase 3 modules
-            cerebellum = new cerebellum_js_1.Cerebellum(finalConfig, fileManager);
+            cerebellum = new cerebellum_js_1.Cerebellum(finalConfig, storage);
             await cerebellum.initialize();
-            basalGanglia = new basal_ganglia_js_1.BasalGanglia(finalConfig, fileManager);
+            basalGanglia = new basal_ganglia_js_1.BasalGanglia(finalConfig, storage);
             await basalGanglia.initialize();
             // Initialize Phase 4 module
-            prefrontal = new prefrontal_js_1.PrefrontalCortex(finalConfig, fileManager);
+            prefrontal = new prefrontal_js_1.PrefrontalCortex(finalConfig, storage);
             await prefrontal.initialize();
+            // Initialize Phase 5 modules
+            const personality = cingulate.getPersonality();
+            personalityInfluence = new personality_influence_js_1.PersonalityInfluence({
+                warmth: personality.warmth ?? 65,
+                directness: personality.directness ?? 75,
+                humor: personality.humor ?? 55,
+                protectiveness: personality.protectiveness ?? 80,
+                curiosity: personality.curiosity ?? 60,
+                assertiveness: personality.assertiveness ?? 70,
+            });
+            // Load persisted lessons and patterns
+            const lessonsData = await storage.readFile('learning/lessons.md');
+            if (lessonsData) {
+                try {
+                    const parsed = JSON.parse(lessonsData);
+                    lessonLearner.loadLessons(parsed);
+                }
+                catch (e) { /* ignore parse errors */ }
+            }
+            const patternsData = await storage.readFile('learning/patterns.md');
+            if (patternsData) {
+                try {
+                    const parsed = JSON.parse(patternsData);
+                    proactiveEngine.loadPatterns(parsed);
+                }
+                catch (e) { /* ignore parse errors */ }
+            }
             initialized = true;
             startTime = Date.now();
             console.log('[AgentBrain:OpenClaw] All modules initialized — brain is online');
@@ -105,32 +147,80 @@ function createOpenClawPlugin(userConfig) {
             };
             // Step 1: Thalamus classifies
             const classification = brain.thalamus.classify(msgContext);
-            // Step 2: Hippocampus recalls
-            const relevantMemories = await brain.hippocampus.recall(context.message, classification.topic);
-            // Step 3: Amygdala processes emotion + threat
+            // Step 2: Temporal comprehends language & extracts semantics
+            const semanticRep = brain.temporal.comprehend(context.message, { role: 'user', timestamp: Date.now() });
+            // Step 3: Parietal integrates sensory input
+            brain.parietal.integrateSensoryInput([{
+                    modality: 'text',
+                    data: context.message,
+                    timestamp: Date.now(),
+                    importance: classification.urgency === 'critical' ? 1.0 : 0.5,
+                }]);
+            // Step 4: Insula models user state
+            brain.insula.modelUserState({
+                message: context.message,
+                recentInteractions: interactionCount,
+                userSuccessRate: 0.8,
+                timeOfDay: new Date().getHours(),
+            });
+            // Step 5: Hippocampus recalls (use semantic concepts for better recall)
+            const recallQuery = semanticRep.concepts.length > 0
+                ? semanticRep.concepts.join(' ')
+                : context.message;
+            const relevantMemories = await brain.hippocampus.recall(recallQuery, classification.topic);
+            // Step 6: Amygdala processes emotion + threat
             const emotionalResult = amygdala.process(msgContext);
-            // Step 4: Prefrontal plans
+            // Step 7: Prefrontal plans
             const plan = prefrontal.plan(classification, context.message);
-            // Step 5: Cerebellum detects skill
+            // Step 8: Cerebellum detects skill
             const detectedSkill = cerebellum.detectSkill(context.message);
             if (detectedSkill) {
                 cerebellum.detectPattern(detectedSkill, context.timestamp);
             }
             // Step 6: Update working memory with current context
-            prefrontal.updateWorkingMemory(`User asked: ${context.message.slice(0, 80)}`, 'current_turn', 1.0);
-            // Step 7: Build injection context
+            prefrontal.updateWorkingMemory(`User: ${context.message.slice(0, 80)}`, 'current_turn', 1.0);
+            // Step 9: Find relevant lessons (from past corrections)
+            const relevantLessons = lessonLearner.findRelevantLessons(context.message);
+            const lessonsContext = lessonLearner.formatForInjection(relevantLessons);
+            // Step 10: Generate personality-driven style directives
+            const relationship = amygdala.getRelationship(context.senderId);
+            const styleDirectives = personalityInfluence.generateDirectives({
+                timeOfDay: new Date().getHours(),
+                mood: emotionalResult.updatedState.mood,
+                valence: emotionalResult.updatedState.valence,
+                arousal: emotionalResult.updatedState.arousal,
+                recentTopics: [classification.topic],
+                interactionCount,
+                trustLevel: relationship?.trustLevel || 10,
+                lastUserSentiment: amygdala.detectSentiment(context.message),
+            });
+            // Step 11: Check proactive suggestions
+            const suggestions = proactiveEngine.checkTriggers({
+                currentHour: new Date().getHours(),
+                lastMessage: context.message,
+            });
+            const suggestionsContext = suggestions.length > 0
+                ? `Proactive: ${suggestions.map(s => s.message).join(' | ')}`
+                : '';
+            // Step 12: Record action for pattern learning
+            proactiveEngine.recordAction(classification.topic || 'general', context.timestamp);
+            // Step 13: Build injection context
             const injectionContext = {
                 classification,
                 emotionalState: emotionalResult.updatedState,
                 personality: cingulate.getPersonality(),
-                relationship: amygdala.getRelationship(context.senderId) || null,
+                relationship: relationship || null,
                 relevantMemories,
                 topSkills: cerebellum.getTopSkills(3),
                 activeHabits: cerebellum.getActiveHabits(),
                 workingMemory: prefrontal.getWorkingMemory(),
                 rewardTrend: basalGanglia.getRecentTrend(),
+                // New fields
+                lessonsContext,
+                styleDirectives,
+                suggestionsContext,
             };
-            // Step 8: Generate injectable context (with priority enforcement)
+            // Step 14: Generate injectable context (with priority enforcement)
             const brainContext = injector.inject(injectionContext);
             interactionCount++;
             return brainContext;
@@ -153,23 +243,40 @@ function createOpenClawPlugin(userConfig) {
                 senderName: context.senderName,
                 timestamp: context.timestamp,
             });
-            // Step 2: Detect user sentiment for reward signal
+            // Step 2: Knowledge extraction (structured facts)
+            knowledgeExtractor.extract(context.message, response, {
+                senderName: context.senderName,
+                timestamp: context.timestamp,
+                previousFacts: knowledgeExtractor.getActiveFacts(),
+            });
+            // Step 3: Lesson learning (detect corrections)
+            const lesson = lessonLearner.analyze({
+                userMessage: context.message,
+                agentResponse: response,
+                previousAgentResponse: lastAgentResponse,
+                senderName: context.senderName,
+                timestamp: context.timestamp,
+            });
+            if (lesson) {
+                console.log(`[AgentBrain] Lesson learned: ${lesson.type} — ${lesson.right.slice(0, 60)}`);
+            }
+            // Step 4: Detect user sentiment for reward signal
             const sentiment = amygdala.detectSentiment(context.message);
-            // Step 3: Cerebellum records skill usage
+            // Step 5: Cerebellum records skill usage
             const skill = cerebellum.detectSkill(context.message);
             if (skill) {
-                const success = sentiment >= 0; // positive or neutral = success
+                const success = sentiment >= 0;
                 cerebellum.recordSkillUsage(skill, success);
             }
-            // Step 4: Basal Ganglia processes reward
+            // Step 6: Basal Ganglia processes reward
             basalGanglia.processReward({
                 timestamp: context.timestamp,
                 taskType: skill || 'general',
                 signal: sentiment,
-                source: sentiment !== 0 ? 'implicit' : 'implicit',
+                source: 'implicit',
                 context: context.message.slice(0, 50),
             });
-            // Step 5: Anterior Cingulate reflects (only on significant tasks)
+            // Step 7: Anterior Cingulate reflects (only on significant tasks)
             const classification = brain.thalamus.classify(msgContext);
             if (classification.requiresAction || Math.abs(sentiment) > 0.3) {
                 cingulate.reflect({
@@ -180,8 +287,12 @@ function createOpenClawPlugin(userConfig) {
                     emotionalState: amygdala.getState(),
                 });
             }
-            // Step 6: Prefrontal completes plan
+            // Step 8: Prefrontal completes plan
             prefrontal.completePlan();
+            // Step 9: Update personality influence with latest traits
+            personalityInfluence.updateTraits(cingulate.getPersonality());
+            // Track last response for lesson learning context
+            lastAgentResponse = response;
         },
         async onHeartbeat() {
             if (!initialized)
@@ -194,7 +305,21 @@ function createOpenClawPlugin(userConfig) {
             await cerebellum.persist();
             await basalGanglia.persist();
             await prefrontal.persist();
-            console.log(`[AgentBrain:OpenClaw] Heartbeat — ${interactionCount} interactions processed`);
+            // Persist lessons and patterns
+            const lessons = lessonLearner.getLessons();
+            if (lessons.length > 0) {
+                await storage.writeFile('learning/lessons.md', JSON.stringify(lessons, null, 2));
+            }
+            const patterns = proactiveEngine.getPatterns();
+            if (patterns.length > 0) {
+                await storage.writeFile('learning/patterns.md', JSON.stringify(patterns, null, 2));
+            }
+            // Persist knowledge facts
+            const facts = knowledgeExtractor.getActiveFacts();
+            if (facts.length > 0) {
+                await storage.writeFile('knowledge/facts.md', JSON.stringify(facts, null, 2));
+            }
+            console.log(`[AgentBrain:OpenClaw] Heartbeat — ${interactionCount} interactions, ${lessons.length} lessons, ${facts.length} facts`);
         },
         async shutdown() {
             if (!initialized)
@@ -205,6 +330,13 @@ function createOpenClawPlugin(userConfig) {
             await cerebellum.persist();
             await basalGanglia.persist();
             await prefrontal.persist();
+            // Persist new modules
+            await storage.writeFile('learning/lessons.md', JSON.stringify(lessonLearner.getLessons(), null, 2));
+            await storage.writeFile('learning/patterns.md', JSON.stringify(proactiveEngine.getPatterns(), null, 2));
+            await storage.writeFile('knowledge/facts.md', JSON.stringify(knowledgeExtractor.getActiveFacts(), null, 2));
+            await storage.writeFile('knowledge/entities.md', JSON.stringify(knowledgeExtractor.getEntities(), null, 2));
+            // Shutdown hippocampus (closes vector DB)
+            await brain.hippocampus.shutdown();
             initialized = false;
             console.log('[AgentBrain:OpenClaw] Shutdown complete — brain state persisted');
         },

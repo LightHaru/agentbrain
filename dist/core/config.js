@@ -8,7 +8,7 @@ exports.defaultConfig = {
     brainDir: './brain',
     maxRecallResults: 10,
     memoryDecayRate: 0.01,
-    minMemoryConfidence: 0.2,
+    minMemoryConfidence: 0.4,
     enableReflection: true,
     enableEmotions: true,
     enableSkillTracking: true,

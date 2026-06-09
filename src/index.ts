@@ -32,8 +32,27 @@ export { Insula } from './core/insula.js';
 export { WorkingMemory } from './core/working-memory.js';
 export { Metacognition } from './core/metacognition.js';
 
+// Phase 2 modules (v0.6.0) — previously missing from the barrel API
+export { Hypothalamus } from './core/hypothalamus.js';
+export { Brainstem } from './core/brainstem.js';
+export { CorpusCallosum } from './core/corpus-callosum.js';
+export { GlobalWorkspace } from './core/global-workspace.js';
+export { TheoryOfMind } from './core/theory-of-mind.js';
+
+// Phase 3 neurochemistry (v0.5.0)
+export { Neurochemistry } from './core/neurochemistry.js';
+
+// Generative affect via cognitive appraisal (v0.8.0)
+export { AffectCore } from './core/affect-core.js';
+export type { EmotionLabel, DiscreteEmotion, AppraisalInput, AffectState, EmotionVAD, Agency } from './core/affect-core.js';
+
+// Agent-neutral SDK engine (v0.7.0)
+export { createBrainEngine } from './engine.js';
+export type { BrainEngine, BrainEngineOptions, TurnInput, TurnResult, Clock } from './engine.js';
+
 // Storage & Config
 export { BrainFileManager } from './storage/md-writer.js';
+export { MemoryStorage } from './storage/memory-storage.js';
 export { BrainConfig, defaultConfig } from './core/config.js';
 
 // Integration

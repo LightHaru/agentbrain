@@ -16,6 +16,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Insula = void 0;
+const circadian_js_1 = require("./circadian.js");
 // ============================================================================
 // Insula Class
 // ============================================================================
@@ -45,6 +46,7 @@ class Insula {
             lastRest: Date.now(),
             cognitiveLoad: 0,
             idleTime: 0,
+            circadianPhase: (0, circadian_js_1.getCircadianPhase)(new Date().getHours(), 'Asia/Ho_Chi_Minh'),
         };
         this.performanceHistory = [];
         // Initialize neutral user state
@@ -259,6 +261,8 @@ class Insula {
      * Model user's mental/emotional state
      */
     modelUserState(context) {
+        // Update circadian phase
+        this.bodyState.circadianPhase = (0, circadian_js_1.getCircadianPhase)(context.timeOfDay, 'Asia/Ho_Chi_Minh');
         const msg = context.message.toLowerCase();
         // Detect emotion from message
         const emotion = this.detectUserEmotion(msg);
@@ -470,6 +474,19 @@ class Insula {
     // Introspection & Debugging
     // ==========================================================================
     /**
+     * Get circadian-adjusted alertness
+     */
+    getAlertness() {
+        if (!this.bodyState.circadianPhase) {
+            return 0.7; // default
+        }
+        // Adjust alertness based on energy and fatigue
+        const baseAlertness = this.bodyState.circadianPhase.alertness;
+        const energyFactor = this.bodyState.energy / 100;
+        const fatigueFactor = 1 - (this.bodyState.fatigue / 100);
+        return baseAlertness * energyFactor * fatigueFactor;
+    }
+    /**
      * Get current state for debugging
      */
     getState() {
@@ -480,6 +497,8 @@ class Insula {
             needsRest: this.needsRest(),
             userFrustration: this.userState.frustrationLevel,
             userSatisfaction: this.userState.satisfactionLevel,
+            alertness: this.getAlertness(),
+            circadianPhase: this.bodyState.circadianPhase?.phase,
         };
     }
 }

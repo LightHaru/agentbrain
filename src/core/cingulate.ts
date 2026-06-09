@@ -332,6 +332,13 @@ export class AnteriorCingulate {
   }
 
   /**
+   * Update personality traits (Phase 5: learning from feedback)
+   */
+  updatePersonality(newTraits: PersonalityTraits): void {
+    this.personality = { ...newTraits };
+  }
+
+  /**
    * Persist reflection data and updated personality
    */
   async persist(): Promise<void> {

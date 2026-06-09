@@ -14,6 +14,7 @@
  * - Generate empathetic responses
  */
 import { BrainConfig } from './config.js';
+import { CircadianPhase } from './circadian.js';
 export interface BodyMetrics {
     /** Energy level (0-100) */
     energy: number;
@@ -27,6 +28,8 @@ export interface BodyMetrics {
     cognitiveLoad: number;
     /** Time since last interaction */
     idleTime: number;
+    /** Current circadian phase */
+    circadianPhase?: CircadianPhase;
 }
 export interface PerformanceAssessment {
     /** Recent success rate (0-1) */
@@ -200,6 +203,10 @@ export declare class Insula {
         arousal: number;
     }): SelfRegulationAction;
     /**
+     * Get circadian-adjusted alertness
+     */
+    getAlertness(): number;
+    /**
      * Get current state for debugging
      */
     getState(): {
@@ -209,6 +216,8 @@ export declare class Insula {
         needsRest: boolean;
         userFrustration: number;
         userSatisfaction: number;
+        alertness: number;
+        circadianPhase: "morning" | "afternoon" | "evening" | "late-night" | "deep-night" | undefined;
     };
 }
 //# sourceMappingURL=insula.d.ts.map

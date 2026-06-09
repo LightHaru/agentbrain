@@ -37,6 +37,10 @@ class ContextInjector {
         const opts = { ...DEFAULT_OPTIONS, ...options };
         const lines = [];
         lines.push('## Brain State (AgentBrain — auto-injected)');
+        // Phase 4: Status-check hint (inject early for high visibility)
+        if (context.classification.topic === 'status-check') {
+            lines.push('⚡ Status-check query detected: keep reply brief (≤3 sentences), focus on current state + blockers + ETA.');
+        }
         // Emotional state (compact)
         if (opts.includeEmotions) {
             const { mood, valence, arousal } = context.emotionalState;
@@ -89,6 +93,18 @@ class ContextInjector {
                 : context.rewardTrend < -0.3 ? 'needs_improvement'
                     : 'neutral';
             lines.push(`Recent feedback trend: ${trendLabel} (${context.rewardTrend.toFixed(2)})`);
+        }
+        // Phase 5: Lessons from past corrections
+        if (context.lessonsContext) {
+            lines.push(context.lessonsContext);
+        }
+        // Phase 5: Style directives from personality influence
+        if (context.styleDirectives) {
+            lines.push(context.styleDirectives);
+        }
+        // Phase 5: Proactive suggestions
+        if (context.suggestionsContext) {
+            lines.push(context.suggestionsContext);
         }
         // Apply priority enforcement — filter out anything that conflicts with SOUL/AGENTS
         const filtered = this.enforcer.filterBrainContext(lines);

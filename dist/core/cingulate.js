@@ -55,7 +55,10 @@ class AnteriorCingulate {
     reflect(params) {
         const { taskDescription, userMessage, agentResponse, userSentiment, emotionalState } = params;
         // Infer outcome from user sentiment
-        const outcome = userSentiment > 0.3 ? 'success'
+        // Neutral or mildly positive = success (user didn't complain = task was fine)
+        // Only count failure when clearly negative (< -0.3)
+        // Neutral range (-0.1 to 0.1) = success
+        const outcome = userSentiment >= -0.1 ? 'success'
             : userSentiment < -0.3 ? 'failure'
                 : 'partial';
         // Self-assess based on response quality signals
@@ -236,6 +239,12 @@ class AnteriorCingulate {
      */
     getPersonality() {
         return { ...this.personality };
+    }
+    /**
+     * Update personality traits (Phase 5: learning from feedback)
+     */
+    updatePersonality(newTraits) {
+        this.personality = { ...newTraits };
     }
     /**
      * Persist reflection data and updated personality

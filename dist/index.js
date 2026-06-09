@@ -7,7 +7,7 @@
  * Cerebellum, Basal Ganglia, Anterior Cingulate).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.plugin = exports.ContextInjector = exports.PriorityEnforcer = exports.createOpenClawPlugin = exports.defaultConfig = exports.BrainFileManager = exports.TheoryOfMind = exports.GlobalWorkspace = exports.CorpusCallosum = exports.Brainstem = exports.Hypothalamus = exports.Metacognition = exports.WorkingMemory = exports.Insula = exports.ParietalLobe = exports.TemporalLobe = exports.PrefrontalCortex = exports.BasalGanglia = exports.Cerebellum = exports.AnteriorCingulate = exports.Amygdala = exports.Hippocampus = exports.Thalamus = void 0;
+exports.plugin = exports.ContextInjector = exports.PriorityEnforcer = exports.createOpenClawPlugin = exports.defaultConfig = exports.MemoryStorage = exports.BrainFileManager = exports.createBrainEngine = exports.AffectCore = exports.Neurochemistry = exports.TheoryOfMind = exports.GlobalWorkspace = exports.CorpusCallosum = exports.Brainstem = exports.Hypothalamus = exports.Metacognition = exports.WorkingMemory = exports.Insula = exports.ParietalLobe = exports.TemporalLobe = exports.PrefrontalCortex = exports.BasalGanglia = exports.Cerebellum = exports.AnteriorCingulate = exports.Amygdala = exports.Hippocampus = exports.Thalamus = void 0;
 exports.createAgentBrain = createAgentBrain;
 const thalamus_js_1 = require("./core/thalamus.js");
 const hippocampus_js_1 = require("./core/hippocampus.js");
@@ -17,11 +17,6 @@ const temporal_js_1 = require("./core/temporal.js");
 const parietal_js_1 = require("./core/parietal.js");
 const insula_js_1 = require("./core/insula.js");
 const metacognition_js_1 = require("./core/metacognition.js");
-const hypothalamus_js_1 = require("./core/hypothalamus.js");
-const brainstem_js_1 = require("./core/brainstem.js");
-const corpus_callosum_js_1 = require("./core/corpus-callosum.js");
-const global_workspace_js_1 = require("./core/global-workspace.js");
-const theory_of_mind_js_1 = require("./core/theory-of-mind.js");
 // Re-export all modules for external use
 // Core modules (v1.0)
 var thalamus_js_2 = require("./core/thalamus.js");
@@ -49,20 +44,31 @@ var working_memory_js_1 = require("./core/working-memory.js");
 Object.defineProperty(exports, "WorkingMemory", { enumerable: true, get: function () { return working_memory_js_1.WorkingMemory; } });
 var metacognition_js_2 = require("./core/metacognition.js");
 Object.defineProperty(exports, "Metacognition", { enumerable: true, get: function () { return metacognition_js_2.Metacognition; } });
-// Phase 2 modules (v0.3.0)
-var hypothalamus_js_2 = require("./core/hypothalamus.js");
-Object.defineProperty(exports, "Hypothalamus", { enumerable: true, get: function () { return hypothalamus_js_2.Hypothalamus; } });
-var brainstem_js_2 = require("./core/brainstem.js");
-Object.defineProperty(exports, "Brainstem", { enumerable: true, get: function () { return brainstem_js_2.Brainstem; } });
-var corpus_callosum_js_2 = require("./core/corpus-callosum.js");
-Object.defineProperty(exports, "CorpusCallosum", { enumerable: true, get: function () { return corpus_callosum_js_2.CorpusCallosum; } });
-var global_workspace_js_2 = require("./core/global-workspace.js");
-Object.defineProperty(exports, "GlobalWorkspace", { enumerable: true, get: function () { return global_workspace_js_2.GlobalWorkspace; } });
-var theory_of_mind_js_2 = require("./core/theory-of-mind.js");
-Object.defineProperty(exports, "TheoryOfMind", { enumerable: true, get: function () { return theory_of_mind_js_2.TheoryOfMind; } });
+// Phase 2 modules (v0.6.0) — previously missing from the barrel API
+var hypothalamus_js_1 = require("./core/hypothalamus.js");
+Object.defineProperty(exports, "Hypothalamus", { enumerable: true, get: function () { return hypothalamus_js_1.Hypothalamus; } });
+var brainstem_js_1 = require("./core/brainstem.js");
+Object.defineProperty(exports, "Brainstem", { enumerable: true, get: function () { return brainstem_js_1.Brainstem; } });
+var corpus_callosum_js_1 = require("./core/corpus-callosum.js");
+Object.defineProperty(exports, "CorpusCallosum", { enumerable: true, get: function () { return corpus_callosum_js_1.CorpusCallosum; } });
+var global_workspace_js_1 = require("./core/global-workspace.js");
+Object.defineProperty(exports, "GlobalWorkspace", { enumerable: true, get: function () { return global_workspace_js_1.GlobalWorkspace; } });
+var theory_of_mind_js_1 = require("./core/theory-of-mind.js");
+Object.defineProperty(exports, "TheoryOfMind", { enumerable: true, get: function () { return theory_of_mind_js_1.TheoryOfMind; } });
+// Phase 3 neurochemistry (v0.5.0)
+var neurochemistry_js_1 = require("./core/neurochemistry.js");
+Object.defineProperty(exports, "Neurochemistry", { enumerable: true, get: function () { return neurochemistry_js_1.Neurochemistry; } });
+// Generative affect via cognitive appraisal (v0.8.0)
+var affect_core_js_1 = require("./core/affect-core.js");
+Object.defineProperty(exports, "AffectCore", { enumerable: true, get: function () { return affect_core_js_1.AffectCore; } });
+// Agent-neutral SDK engine (v0.7.0)
+var engine_js_1 = require("./engine.js");
+Object.defineProperty(exports, "createBrainEngine", { enumerable: true, get: function () { return engine_js_1.createBrainEngine; } });
 // Storage & Config
 var md_writer_js_2 = require("./storage/md-writer.js");
 Object.defineProperty(exports, "BrainFileManager", { enumerable: true, get: function () { return md_writer_js_2.BrainFileManager; } });
+var memory_storage_js_1 = require("./storage/memory-storage.js");
+Object.defineProperty(exports, "MemoryStorage", { enumerable: true, get: function () { return memory_storage_js_1.MemoryStorage; } });
 var config_js_2 = require("./core/config.js");
 Object.defineProperty(exports, "defaultConfig", { enumerable: true, get: function () { return config_js_2.defaultConfig; } });
 // Integration
@@ -86,12 +92,6 @@ function createAgentBrain(userConfig) {
     const parietal = new parietal_js_1.ParietalLobe(config);
     const insula = new insula_js_1.Insula(config);
     const metacognition = new metacognition_js_1.Metacognition(config);
-    // Phase 2 modules (v0.3.0)
-    const hypothalamus = new hypothalamus_js_1.Hypothalamus(config);
-    const brainstem = new brainstem_js_1.Brainstem(config);
-    const corpusCallosum = new corpus_callosum_js_1.CorpusCallosum(config);
-    const globalWorkspace = new global_workspace_js_1.GlobalWorkspace(config);
-    const theoryOfMind = new theory_of_mind_js_1.TheoryOfMind(config);
     const plugin = {
         name: 'agentbrain',
         version: '0.2.0', // Bumped to 0.2.0 for Phase 1
@@ -103,11 +103,6 @@ function createAgentBrain(userConfig) {
         parietal,
         insula,
         metacognition,
-        hypothalamus,
-        brainstem,
-        corpusCallosum,
-        globalWorkspace,
-        theoryOfMind,
         async initialize() {
             await fileManager.ensureBrainStructure();
             await hippocampus.initialize();

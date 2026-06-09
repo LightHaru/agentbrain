@@ -17,6 +17,7 @@ const SKILL_PATTERNS = {
     'code-debugging': [/fix|bug|lỗi|error|debug|crash/i],
     'content-writing': [/viết.*bài|blog|article|content|seo/i],
     'research': [/tìm hiểu|research|tìm.*giúp|investigate|đánh giá/i],
+    'web-research': [/search|tìm.*kiếm|web.*search|google|lookup|fact.*check|source|citation/i],
     'ops-server': [/server|deploy|nginx|docker|systemctl|vps/i],
     'image-generation': [/hình|image|ảnh|generate.*image|tạo.*hình/i],
     'planning': [/plan|kế hoạch|roadmap|architecture|thiết kế/i],

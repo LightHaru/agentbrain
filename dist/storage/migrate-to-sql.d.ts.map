@@ -1,0 +1,1 @@
+{"version":3,"file":"migrate-to-sql.d.ts","sourceRoot":"","sources":["../../src/storage/migrate-to-sql.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAMH,wBAAgB,eAAe,CAAC,QAAQ,EAAE,MAAM,GAAG;IAAE,QAAQ,EAAE,MAAM,CAAC,MAAM,EAAE,MAAM,CAAC,CAAC;IAAC,MAAM,EAAE,MAAM,EAAE,CAAA;CAAE,CAkIxG"}

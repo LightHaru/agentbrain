@@ -23,22 +23,37 @@ const THREAT_PATTERNS = [
 /** Sentiment keyword weights */
 const SENTIMENT_SIGNALS = {
     positive: [
-        { pattern: /cảm ơn|thanks|thank you|tks/i, weight: 0.8 },
-        { pattern: /tuyệt|great|awesome|perfect|đỉnh|ngon|hay/i, weight: 0.7 },
-        { pattern: /thích|love|yêu|❤️|😍|🥰/i, weight: 0.6 },
-        { pattern: /haha|lol|😂|🤣|😁|vui/i, weight: 0.4 },
-        { pattern: /ok|oke|được|good|nice/i, weight: 0.3 },
-        { pattern: /giỏi|kute|cute|hehe|hihi/i, weight: 0.5 },
+        // gratitude
+        { pattern: /cảm ơn|cám ơn|thank you|thanks|tks|thx|biết ơn|cảm kích|mang ơn/i, weight: 0.8 },
+        // strong praise
+        { pattern: /tuyệt vời|tuyệt|xuất sắc|quá đỉnh|đỉnh|great|awesome|amazing|excellent|perfect|hoàn hảo/i, weight: 0.8 },
+        // praise (skill/result)
+        { pattern: /giỏi|làm tốt|tốt lắm|quá hay|hay quá|hay đấy|chuẩn|chính xác|đúng rồi|xịn|ngon|ngon lành|pro|well done|good job/i, weight: 0.7 },
+        // affection
+        { pattern: /thích|yêu|thương|quý|mến|cưng|love|adore|❤️|😍|🥰|😘/i, weight: 0.6 },
+        // cute / playful warmth
+        { pattern: /kute|cute|dễ thương|đáng yêu|hehe|hihi/i, weight: 0.5 },
+        // joy
+        { pattern: /haha|haha|lol|😂|🤣|😁|😄|vui|mừng|sướng|phấn khích|hào hứng|đã quá/i, weight: 0.45 },
+        // mild approval (bounded to avoid matching inside other words like "broken")
+        { pattern: /\bok(e|ay|ie)?\b|\bgood\b|\bnice\b|\bfine\b|\bhay\b|được|ổn|đẹp/i, weight: 0.35 },
     ],
     negative: [
-        { pattern: /tệ|terrible|awful|dở|tệ hại/i, weight: -0.8 },
-        { pattern: /ghét|hate|bực|tức|irritated|frustrated/i, weight: -0.7 },
-        { pattern: /sai|wrong|lỗi|error|fail|broken/i, weight: -0.5 },
-        { pattern: /buồn|sad|😢|😭|disappointed/i, weight: -0.6 },
-        { pattern: /chậm|slow|lag|đợi lâu/i, weight: -0.3 },
+        // negated praise / approval (catch before the positive word fires)
+        { pattern: /không\s*(được|tốt|hay|ổn|ưng|hài lòng)|chẳng\s*(ra gì|tốt|hay|được)|chả\s*(ra gì|được)/i, weight: -0.6 },
+        // bad quality
+        { pattern: /tệ hại|tệ|dở|kém|tồi|terrible|awful|\bbad\b|rác|vứt đi/i, weight: -0.8 },
+        // anger / annoyance
+        { pattern: /ghét|bực|tức|cáu|khó chịu|điên|phiền|irritated|frustrated|annoyed|pissed/i, weight: -0.7 },
+        // errors / breakage
+        { pattern: /\bsai\b|\blỗi\b|hỏng|fail|wrong|error|broken|\bbug\b|không chạy|chẳng chạy|không work|crash/i, weight: -0.55 },
+        // sadness / discouragement
+        { pattern: /buồn|sad|😢|😭|thất vọng|chán nản|nản|tuyệt vọng|mệt mỏi|disappointed/i, weight: -0.6 },
+        // slowness / waiting complaints
+        { pattern: /chậm|\blag\b|\bslow\b|đợi lâu|chờ lâu|\btreo\b|\bđơ\b|ì ạch/i, weight: -0.3 },
     ],
     teasing: [
-        { pattern: /gà mập|gà|mập|khùng|ngu/i, weight: -0.2 },
+        { pattern: /gà mập|gà|mập|khùng|\bngu\b|đần|dại|baka/i, weight: -0.2 },
         { pattern: /chán|die|chết/i, weight: -0.1 },
     ],
 };
@@ -47,6 +62,8 @@ class Amygdala {
     fileManager;
     currentState;
     relationships = new Map();
+    /** Phase 3: neuromodulator system (optional; injected after construction). */
+    neurochem = null;
     constructor(config, fileManager) {
         this.config = config;
         this.fileManager = fileManager;
@@ -56,6 +73,21 @@ class Amygdala {
             valence: 0,
             arousal: 0.3,
         };
+    }
+    /** Wire in the neurochemistry module (Phase 3). Safe no-op if never called. */
+    attachNeurochemistry(neurochem) {
+        this.neurochem = neurochem;
+    }
+    /** Detect a bonding/praise signal (0..1) for oxytocin. */
+    detectBonding(message) {
+        let b = 0;
+        if (/cảm ơn|thanks|thank you|tks|biết ơn/i.test(message))
+            b += 0.6;
+        if (/giỏi|tuyệt|đỉnh|ngon|kute|cute|yêu|love|❤️|🥰|😍/i.test(message))
+            b += 0.5;
+        if (/tin tưởng|trust|dựa vào|nhờ em/i.test(message))
+            b += 0.4;
+        return Math.min(1, b);
     }
     /**
      * Initialize: load emotional state and relationships from files
@@ -77,8 +109,9 @@ class Amygdala {
     process(context) {
         const userSentiment = this.detectSentiment(context.message);
         const threat = this.assessThreat(context.message);
+        const bonding = this.detectBonding(context.message);
         // Update agent emotional state based on user sentiment
-        this.updateEmotionalState(userSentiment, threat);
+        this.updateEmotionalState(userSentiment, threat, bonding);
         // Update relationship
         this.updateRelationship(context, userSentiment);
         return {
@@ -91,29 +124,32 @@ class Amygdala {
      * Detect user sentiment from message (-1 to 1)
      */
     detectSentiment(message) {
-        let score = 0;
+        // Combine evidence per polarity with a saturating "probabilistic OR"
+        // (1 - Π(1 - w)) instead of averaging. Averaging diluted a strong signal
+        // whenever a second weak word matched; this keeps strong praise/criticism
+        // strong while still capping each side at 1.
+        let posAcc = 1;
+        let negAcc = 1;
         let matches = 0;
         for (const signal of SENTIMENT_SIGNALS.positive) {
             if (signal.pattern.test(message)) {
-                score += signal.weight;
+                posAcc *= 1 - Math.min(0.95, signal.weight);
                 matches++;
             }
         }
-        for (const signal of SENTIMENT_SIGNALS.negative) {
-            if (signal.pattern.test(message)) {
-                score += signal.weight;
-                matches++;
-            }
-        }
-        for (const signal of SENTIMENT_SIGNALS.teasing) {
-            if (signal.pattern.test(message)) {
-                score += signal.weight;
-                matches++;
+        for (const group of [SENTIMENT_SIGNALS.negative, SENTIMENT_SIGNALS.teasing]) {
+            for (const signal of group) {
+                if (signal.pattern.test(message)) {
+                    negAcc *= 1 - Math.min(0.95, Math.abs(signal.weight));
+                    matches++;
+                }
             }
         }
         if (matches === 0)
             return 0;
-        return Math.max(-1, Math.min(1, score / matches));
+        const positive = 1 - posAcc;
+        const negative = 1 - negAcc;
+        return Math.max(-1, Math.min(1, positive - negative));
     }
     /**
      * Assess if message contains threats (scam, hack, danger)
@@ -134,11 +170,23 @@ class Amygdala {
     /**
      * Update agent's emotional state based on interaction
      */
-    updateEmotionalState(userSentiment, threat) {
-        // Emotional inertia: state changes gradually, not instantly
-        const inertia = 0.6; // 60% old state, 40% new input (reduced from 0.7 for faster response)
-        // Valence shifts toward user sentiment
+    updateEmotionalState(userSentiment, threat, bonding = 0) {
+        // Phase 3: push neurochemicals first, then let them modulate the update.
+        let inertia = 0.6; // default fixed inertia (fallback if no neurochem)
+        let valenceBias = 0;
+        let arousalBias = 0;
+        let dangerOverride = false;
+        if (this.neurochem) {
+            this.neurochem.applyEvent(userSentiment, threat.isThreat, threat.severity, bonding);
+            const mod = this.neurochem.modulate();
+            inertia = mod.inertia; // dynamic: serotonin stabilizes, cortisol destabilizes
+            valenceBias = mod.valenceBias;
+            arousalBias = mod.arousalBias;
+            dangerOverride = mod.dangerOverride;
+        }
+        // Valence shifts toward user sentiment, then biased by neurochemistry (mood floor/stress)
         this.currentState.valence = this.currentState.valence * inertia + userSentiment * (1 - inertia);
+        this.currentState.valence = Math.max(-1, Math.min(1, this.currentState.valence + valenceBias));
         // Arousal increases with threats or strong emotions
         if (threat.isThreat) {
             this.currentState.arousal = Math.min(1, this.currentState.arousal + 0.3);
@@ -147,8 +195,28 @@ class Amygdala {
             // Arousal decays toward baseline
             this.currentState.arousal = this.currentState.arousal * 0.9 + 0.3 * 0.1;
         }
+        // Neurochemical arousal bias (dopamine energy / cortisol alertness)
+        this.currentState.arousal = Math.max(0, Math.min(1, this.currentState.arousal + arousalBias));
         // Intensity based on absolute valence + arousal
         this.currentState.intensity = (Math.abs(this.currentState.valence) + this.currentState.arousal) / 2;
+        // Amygdala hijack: an acute high/critical threat overrides a good mood
+        // outright (fast danger path). A REAL threat this turn is required to flip
+        // mood to 'alarmed'. Pure accumulated cortisol (dangerOverride) no longer
+        // fakes an alarm with no threat present — it only keeps arousal elevated,
+        // so lingering stress reads as 'alert/concerned', not false panic.
+        // BUGFIX (Phase 2, ported from v0.8.2): dangerOverride alone caused a stuck
+        // 'alarmed' mood on every neutral message once cortisol built up.
+        if (threat.severity === 'high' || threat.severity === 'critical') {
+            this.currentState.valence = Math.min(this.currentState.valence, -0.3);
+            this.currentState.arousal = Math.max(this.currentState.arousal, 0.8);
+            this.currentState.intensity = Math.max(this.currentState.intensity, 0.7);
+            this.currentState.mood = 'alarmed';
+            return;
+        }
+        if (dangerOverride) {
+            // Slow stress path: stay alert/tense but don't invent a threat.
+            this.currentState.arousal = Math.max(this.currentState.arousal, 0.6);
+        }
         // Derive mood label
         this.currentState.mood = this.deriveMood(this.currentState.valence, this.currentState.arousal);
     }
@@ -195,11 +263,16 @@ class Amygdala {
         rel.lastInteraction = context.timestamp;
         if (sentiment > 0.2) {
             rel.positiveInteractions++;
-            rel.trustLevel = Math.min(100, rel.trustLevel + 0.5);
+            rel.trustLevel = Math.min(100, rel.trustLevel + 1.5); // Stronger positive boost
         }
-        else if (sentiment < -0.2) {
+        else if (sentiment < -0.3) {
+            // Only count clearly negative interactions (higher threshold)
             rel.negativeInteractions++;
-            rel.trustLevel = Math.max(0, rel.trustLevel - 0.3);
+            rel.trustLevel = Math.max(0, rel.trustLevel - 0.5);
+        }
+        else {
+            // Neutral interactions still build trust slowly (user is engaging = trust)
+            rel.trustLevel = Math.min(100, rel.trustLevel + 0.2);
         }
         // Depth grows logarithmically with interactions
         rel.depth = Math.min(100, Math.log2(rel.totalInteractions + 1) * 10);

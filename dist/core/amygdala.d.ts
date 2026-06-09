@@ -11,6 +11,7 @@
 import { BrainConfig } from './config.js';
 import { EmotionalState, MessageContext } from '../index.js';
 import { BrainFileManager } from '../storage/md-writer.js';
+import { Neurochemistry } from './neurochemistry.js';
 export interface RelationshipState {
     userId: string;
     userName: string;
@@ -40,7 +41,13 @@ export declare class Amygdala {
     private fileManager;
     private currentState;
     private relationships;
+    /** Phase 3: neuromodulator system (optional; injected after construction). */
+    private neurochem;
     constructor(config: BrainConfig, fileManager: BrainFileManager);
+    /** Wire in the neurochemistry module (Phase 3). Safe no-op if never called. */
+    attachNeurochemistry(neurochem: Neurochemistry): void;
+    /** Detect a bonding/praise signal (0..1) for oxytocin. */
+    private detectBonding;
     /**
      * Initialize: load emotional state and relationships from files
      */

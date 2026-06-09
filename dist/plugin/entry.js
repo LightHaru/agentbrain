@@ -18,6 +18,7 @@ const node_os_1 = require("node:os");
 const thalamus_js_1 = require("../core/thalamus.js");
 const hippocampus_js_1 = require("../core/hippocampus.js");
 const amygdala_js_1 = require("../core/amygdala.js");
+const neurochemistry_js_1 = require("../core/neurochemistry.js");
 const cingulate_js_1 = require("../core/cingulate.js");
 const cerebellum_js_1 = require("../core/cerebellum.js");
 const basal_ganglia_js_1 = require("../core/basal-ganglia.js");
@@ -31,17 +32,26 @@ const brainstem_js_1 = require("../core/brainstem.js");
 const corpus_callosum_js_1 = require("../core/corpus-callosum.js");
 const global_workspace_js_1 = require("../core/global-workspace.js");
 const theory_of_mind_js_1 = require("../core/theory-of-mind.js");
+const affect_core_js_1 = require("../core/affect-core.js");
 const md_writer_js_1 = require("../storage/md-writer.js");
+const sql_adapter_js_1 = require("../storage/sql-adapter.js");
 const priority_enforcer_js_1 = require("../integration/priority-enforcer.js");
 const context_injector_js_1 = require("../integration/context-injector.js");
 const template_manager_js_1 = require("../marketplace/template-manager.js");
 const brain_sync_js_1 = require("../marketplace/brain-sync.js");
 const config_js_1 = require("../core/config.js");
+const knowledge_extractor_js_1 = require("../core/knowledge-extractor.js");
+const lesson_learner_js_1 = require("../core/lesson-learner.js");
+const personality_influence_js_1 = require("../core/personality-influence.js");
+const proactive_engine_js_1 = require("../core/proactive-engine.js");
+const feedback_analyzer_js_1 = require("../core/feedback-analyzer.js");
+const personality_adjuster_js_1 = require("../core/personality-adjuster.js");
 // --- State ---
 let initialized = false;
 let thalamus;
 let hippocampus;
 let amygdala;
+let neurochem;
 let cingulate;
 let cerebellum;
 let basalGanglia;
@@ -55,14 +65,23 @@ let brainstem;
 let corpusCallosum;
 let globalWorkspace;
 let theoryOfMind;
+let affect;
 let fileManager;
+let storage;
 let enforcer;
 let injector;
 let templateManager;
 let brainSync;
+let knowledgeExtractor;
+let lessonLearner;
+let personalityInfluence;
+let proactiveEngine;
+let feedbackAnalyzer;
+let personalityAdjuster;
 let interactionCount = 0;
 let heartbeatCount = 0;
 let lastMessageContext = null;
+let lastAgentResponse = '';
 function resolveDir(dir) {
     if (dir.startsWith('~'))
         return (0, node_path_1.resolve)((0, node_os_1.homedir)(), dir.slice(2));
@@ -71,6 +90,10 @@ function resolveDir(dir) {
 async function ensureInitialized(config) {
     if (initialized)
         return true;
+    // Fallback: if no config passed, use defaults with standard brainDir
+    if (!config) {
+        config = { enabled: true, brainDir: '~/.openclaw/data/agentbrain' };
+    }
     try {
         const brainDir = resolveDir(config?.brainDir || '~/.openclaw/data/agentbrain');
         const brainConfig = {
@@ -84,38 +107,80 @@ async function ensureInitialized(config) {
             enableSkillTracking: config?.enableSkillTracking ?? config_js_1.defaultConfig.enableSkillTracking,
             maintenanceInterval: config?.maintenanceInterval ?? config_js_1.defaultConfig.maintenanceInterval,
         };
+        // SQL storage (primary)
+        storage = new sql_adapter_js_1.SqlStorageAdapter(brainDir);
+        await storage.ensureBrainStructure();
+        // Legacy file manager (for template/sync compatibility)
         fileManager = new md_writer_js_1.BrainFileManager(brainDir);
-        await fileManager.ensureBrainStructure();
         thalamus = new thalamus_js_1.Thalamus(brainConfig);
-        hippocampus = new hippocampus_js_1.Hippocampus(brainConfig, fileManager);
+        hippocampus = new hippocampus_js_1.Hippocampus(brainConfig, storage);
         await hippocampus.initialize();
-        amygdala = new amygdala_js_1.Amygdala(brainConfig, fileManager);
+        amygdala = new amygdala_js_1.Amygdala(brainConfig, storage);
         await amygdala.initialize();
-        cingulate = new cingulate_js_1.AnteriorCingulate(brainConfig, fileManager);
+        // Phase 3: Neurochemistry — neuromodulators bias mood with real momentum
+        neurochem = new neurochemistry_js_1.Neurochemistry(brainConfig, storage);
+        await neurochem.initialize();
+        amygdala.attachNeurochemistry(neurochem);
+        cingulate = new cingulate_js_1.AnteriorCingulate(brainConfig, storage);
         await cingulate.initialize();
-        cerebellum = new cerebellum_js_1.Cerebellum(brainConfig, fileManager);
+        cerebellum = new cerebellum_js_1.Cerebellum(brainConfig, storage);
         await cerebellum.initialize();
-        basalGanglia = new basal_ganglia_js_1.BasalGanglia(brainConfig, fileManager);
+        basalGanglia = new basal_ganglia_js_1.BasalGanglia(brainConfig, storage);
         await basalGanglia.initialize();
-        prefrontal = new prefrontal_js_1.PrefrontalCortex(brainConfig, fileManager);
+        prefrontal = new prefrontal_js_1.PrefrontalCortex(brainConfig, storage);
         await prefrontal.initialize();
         // Phase 1 modules (v0.2.0)
         temporal = new temporal_js_1.TemporalLobe(brainConfig);
         parietal = new parietal_js_1.ParietalLobe(brainConfig);
         insula = new insula_js_1.Insula(brainConfig);
         metacognition = new metacognition_js_1.Metacognition(brainConfig);
-        // Phase 2 modules (v0.3.0)
-        hypothalamus = new hypothalamus_js_1.Hypothalamus(brainConfig);
-        brainstem = new brainstem_js_1.Brainstem(brainConfig);
-        corpusCallosum = new corpus_callosum_js_1.CorpusCallosum(brainConfig);
-        globalWorkspace = new global_workspace_js_1.GlobalWorkspace(brainConfig);
-        theoryOfMind = new theory_of_mind_js_1.TheoryOfMind(brainConfig);
+        // Phase 2 modules (v0.6.0) — now REAL, wired into the pipeline
+        hypothalamus = new hypothalamus_js_1.Hypothalamus('Asia/Ho_Chi_Minh');
+        brainstem = new brainstem_js_1.Brainstem();
+        corpusCallosum = new corpus_callosum_js_1.CorpusCallosum();
+        globalWorkspace = new global_workspace_js_1.GlobalWorkspace();
+        theoryOfMind = new theory_of_mind_js_1.TheoryOfMind();
+        affect = new affect_core_js_1.AffectCore();
+        for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind', 'affect']) {
+            corpusCallosum.register(id);
+        }
         enforcer = new priority_enforcer_js_1.PriorityEnforcer();
         injector = new context_injector_js_1.ContextInjector(enforcer);
         templateManager = new template_manager_js_1.TemplateManager(brainDir, fileManager);
         brainSync = new brain_sync_js_1.BrainSync(brainDir);
+        // Phase 5 modules (v0.3.0)
+        knowledgeExtractor = new knowledge_extractor_js_1.KnowledgeExtractor();
+        lessonLearner = new lesson_learner_js_1.LessonLearner();
+        proactiveEngine = new proactive_engine_js_1.ProactiveEngine();
+        feedbackAnalyzer = new feedback_analyzer_js_1.FeedbackAnalyzer();
+        personalityAdjuster = new personality_adjuster_js_1.PersonalityAdjuster();
+        // Load persisted lessons and patterns from SQL
+        const lessonsData = await storage.readFile('learning/lessons.md');
+        if (lessonsData) {
+            try {
+                lessonLearner.loadLessons(JSON.parse(lessonsData));
+            }
+            catch (e) { }
+        }
+        const patternsData = await storage.readFile('learning/patterns.md');
+        if (patternsData) {
+            try {
+                proactiveEngine.loadPatterns(JSON.parse(patternsData));
+            }
+            catch (e) { }
+        }
+        // PersonalityInfluence from current traits
+        const personality = cingulate.getPersonality();
+        personalityInfluence = new personality_influence_js_1.PersonalityInfluence({
+            warmth: personality.warmth ?? 65,
+            directness: personality.directness ?? 75,
+            humor: personality.humor ?? 55,
+            protectiveness: personality.protectiveness ?? 80,
+            curiosity: personality.curiosity ?? 60,
+            assertiveness: personality.assertiveness ?? 70,
+        });
         initialized = true;
-        console.log('[AgentBrain] Plugin initialized — 7 core + 4 Phase 1 + 5 Phase 2 modules online');
+        console.log('[AgentBrain] Plugin v0.4.1 initialized — SQL storage + circadian + source routing online');
         return true;
     }
     catch (err) {
@@ -152,19 +217,68 @@ const _plugin = definePluginEntry({
                 };
                 // Thalamus classifies
                 const classification = thalamus.classify(msgContext);
-                // Hippocampus recalls
-                const relevantMemories = await hippocampus.recall(message, classification.topic);
+                // Temporal comprehends
+                const semanticRep = temporal.comprehend(message, { role: 'user', timestamp: Date.now() });
+                // Parietal integrates
+                parietal.integrateSensoryInput([{
+                        modality: 'text',
+                        data: message,
+                        timestamp: Date.now(),
+                        importance: classification.urgency === 'critical' ? 1.0 : 0.5,
+                    }]);
+                // Insula models user state
+                insula.modelUserState({
+                    message,
+                    recentInteractions: interactionCount,
+                    userSuccessRate: 0.8,
+                    timeOfDay: new Date().getHours(),
+                });
+                // Hippocampus recalls (semantic-enhanced)
+                const recallQuery = semanticRep.concepts.length > 0
+                    ? semanticRep.concepts.join(' ')
+                    : message;
+                const relevantMemories = await hippocampus.recall(recallQuery, classification.topic);
+                // Amygdala emotion state
+                const emotionalState = amygdala.getState();
+                const relationship = amygdala.getRelationship(msgContext.senderId);
+                // Lessons from past corrections
+                const relevantLessons = lessonLearner.findRelevantLessons(message);
+                const lessonsContext = lessonLearner.formatForInjection(relevantLessons);
+                // Personality-driven style directives
+                const styleDirectives = personalityInfluence.generateDirectives({
+                    timeOfDay: new Date().getHours(),
+                    mood: emotionalState.mood,
+                    valence: emotionalState.valence,
+                    arousal: emotionalState.arousal,
+                    recentTopics: [classification.topic],
+                    interactionCount,
+                    trustLevel: relationship?.trustLevel || 10,
+                    lastUserSentiment: amygdala.detectSentiment(message),
+                });
+                // Proactive suggestions
+                const suggestions = proactiveEngine.checkTriggers({
+                    currentHour: new Date().getHours(),
+                    lastMessage: message,
+                });
+                const suggestionsContext = suggestions.length > 0
+                    ? `Proactive: ${suggestions.map(s => s.message).join(' | ')}`
+                    : '';
+                // Record action for pattern learning
+                proactiveEngine.recordAction(classification.topic || 'general', new Date().toISOString());
                 // Build injection context
                 const injectionContext = {
                     classification,
-                    emotionalState: amygdala.getState(),
+                    emotionalState,
                     personality: cingulate.getPersonality(),
-                    relationship: amygdala.getRelationship(msgContext.senderId) || null,
+                    relationship: relationship || null,
                     relevantMemories,
                     topSkills: cerebellum.getTopSkills(3),
                     activeHabits: cerebellum.getActiveHabits(),
                     workingMemory: prefrontal.getWorkingMemory(),
                     rewardTrend: basalGanglia.getRecentTrend(),
+                    lessonsContext,
+                    styleDirectives,
+                    suggestionsContext,
                 };
                 // Generate injectable context
                 const brainContext = injector.inject(injectionContext, {
@@ -200,6 +314,26 @@ const _plugin = definePluginEntry({
             if (/heartbeat poll|HEARTBEAT_OK|heartbeat/i.test(text)) {
                 heartbeatCount++;
                 amygdala.decayToward('neutral', 0.02);
+                neurochem.decay(1); // Phase 3: chemicals drift toward baseline (lingering moods)
+                hypothalamus.tick(); // Phase 2: drives grow with neglect over time
+                brainstem.pump(); // Phase 2: run due autonomic processes
+                // AffectCore (v0.8.0): spontaneous emotion from internal state, no input
+                try {
+                    const h = hypothalamus.getState();
+                    const n = neurochem.getState();
+                    const drives = h.drives;
+                    const drivePressure = drives.length ? drives.reduce((s, d) => s + d.intensity, 0) / drives.length : 0;
+                    const curiosityDrive = drives.find((d) => d.id === 'curiosity')?.intensity ?? 0;
+                    affect.tick({
+                        drivePressure,
+                        curiosityDrive,
+                        stress: h.homeostasis.stress / 100,
+                        serotonin: n.serotonin,
+                        dopamine: n.dopamine,
+                        circadianAlertness: h.circadian.alertnessLevel,
+                    });
+                }
+                catch { /* spontaneous affect is best-effort */ }
                 return; // Don't process heartbeat as regular message
             }
             const msgContext = {
@@ -222,6 +356,45 @@ const _plugin = definePluginEntry({
                     prefrontal.plan(classification, text);
                     prefrontal.updateWorkingMemory(`User: ${text.slice(0, 80)}`, 'message_received', 1.0);
                 }
+                // Phase 5: Analyze user message as feedback signal
+                const feedback = feedbackAnalyzer.analyze(text, Date.now());
+                if (feedback.sentiment !== 'neutral' || feedback.markers.length > 0) {
+                    const rewardValue = feedbackAnalyzer.toRewardSignal(feedback);
+                    const skill = cerebellum.detectSkill(lastMessageContext?.message || '');
+                    basalGanglia.processReward({
+                        timestamp: feedback.timestamp,
+                        taskType: skill || 'general',
+                        signal: rewardValue,
+                        source: feedback.confidence > 0.7 ? 'explicit' : 'implicit',
+                        context: `Feedback: ${feedback.markers.join(', ')} | RT: ${feedback.reactionTimeMs}ms`,
+                    });
+                    // Every 10 interactions, adjust personality based on feedback patterns
+                    if (interactionCount > 0 && interactionCount % 10 === 0) {
+                        const recentReward = basalGanglia.getRecentTrend(10);
+                        // Build feedback pattern summary from last 10 interactions
+                        const patterns = [];
+                        // Simplified: use current markers as signal (real impl would aggregate from history)
+                        feedback.markers.forEach(m => {
+                            const existing = patterns.find(p => p.marker === m);
+                            if (existing)
+                                existing.frequency++;
+                            else
+                                patterns.push({ marker: m, frequency: 1 });
+                        });
+                        if (patterns.length > 0 || Math.abs(recentReward) > 0.3) {
+                            const currentTraits = cingulate.getPersonality();
+                            const adjustedTraits = personalityAdjuster.adjust(currentTraits, patterns);
+                            // Apply adjusted traits back to cingulate
+                            if (JSON.stringify(currentTraits) !== JSON.stringify(adjustedTraits)) {
+                                cingulate.updatePersonality(adjustedTraits);
+                                personalityInfluence.updateTraits(adjustedTraits);
+                                if (config?.logging) {
+                                    console.log('[AgentBrain] Personality adjusted based on feedback patterns');
+                                }
+                            }
+                        }
+                    }
+                }
                 // Cerebellum: detect skill pattern
                 if (config?.enableSkillTracking !== false) {
                     const skill = cerebellum.detectSkill(text);
@@ -230,6 +403,68 @@ const _plugin = definePluginEntry({
                     }
                     // Also detect relationship patterns
                     cerebellum.detectRelationshipPattern(text, msgContext.timestamp);
+                }
+                // ─── Phase 2 modules (v0.6.0) — real processing per message ───
+                try {
+                    const cls = thalamus.classify(msgContext);
+                    const sentiment = amygdala.detectSentiment(text);
+                    const emo = amygdala.getState();
+                    // Hypothalamus: drives respond to topic/sentiment
+                    hypothalamus.observe(cls.topic || 'general', sentiment);
+                    if (cls.urgency === 'high' || cls.urgency === 'critical') {
+                        hypothalamus.registerThreat(cls.urgency);
+                        brainstem.recordThreat(cls.urgency, text.slice(0, 60));
+                    }
+                    brainstem.pump();
+                    // Theory of Mind: model this user
+                    theoryOfMind.observe(msgContext.senderId, msgContext.senderName, sentiment, cls.topic || 'general');
+                    theoryOfMind.noteExpectation(msgContext.senderId, text);
+                    // Global Workspace: modules compete for the spotlight
+                    globalWorkspace.compete([
+                        { source: 'thalamus', content: cls.topic || 'general', salience: cls.urgency === 'critical' ? 1 : cls.urgency === 'high' ? 0.8 : 0.4 },
+                        { source: 'amygdala', content: emo.mood, salience: Math.min(1, Math.abs(emo.valence) * emo.arousal) },
+                        { source: 'theoryOfMind', content: `user:${msgContext.senderName}`, salience: 0.45 },
+                    ]);
+                    // Corpus Callosum: real inter-module traffic
+                    corpusCallosum.send({ from: 'thalamus', to: 'amygdala', type: 'classification', payload: cls.topic });
+                    corpusCallosum.send({ from: 'amygdala', to: 'hypothalamus', type: 'emotion', payload: emo.mood });
+                    corpusCallosum.send({ from: 'theoryOfMind', to: 'globalWorkspace', type: 'user-model' });
+                    // Conflict check: emotion alarmed but drives calm = mismatch worth noting
+                    const hypoStress = hypothalamus.getState().stressResponse;
+                    if ((emo.mood === 'alarmed') && hypoStress === 'calm') {
+                        corpusCallosum.flagConflict('amygdala', 'hypothalamus', 'emotion alarmed vs drive state calm');
+                    }
+                    // AffectCore (v0.8.0): GENERATE a discrete emotion via appraisal —
+                    // same valence yields different feeling by agency/coping/novelty.
+                    try {
+                        // BUGFIX (Phase 2): threat must come from a REAL threat assessment of
+                        // THIS message, not from the lingering persisted mood. Keying isThreat
+                        // off emo.mood === 'alarmed' created a self-feeding loop: once alarmed,
+                        // every later neutral message ('Xong chưa', 'Ok em làm đi') was re-scored
+                        // as a threat -> anger -> stays alarmed forever.
+                        const realThreat = amygdala.assessThreat(text);
+                        const isThreat = realThreat.isThreat || cls.urgency === 'critical';
+                        const sev = realThreat.severity === 'critical' || cls.urgency === 'critical' ? 1
+                            : realThreat.severity === 'high' ? 0.75
+                                : realThreat.severity === 'medium' ? 0.5
+                                    : realThreat.severity === 'low' ? 0.3
+                                        : 0.4;
+                        const tomModel = theoryOfMind.getState().currentUserModel;
+                        const novelty = Math.max(0, Math.min(1, Math.abs(sentiment - (tomModel?.lastSentiment ?? 0))));
+                        affect.appraise({
+                            goalCongruence: isThreat ? -sev : sentiment,
+                            goalRelevance: isThreat ? 0.9 : 0.4 + Math.abs(sentiment) * 0.5,
+                            agency: isThreat ? 'circumstance' : sentiment !== 0 ? 'other' : 'self',
+                            copingPotential: isThreat ? 0.7 : 0.6,
+                            novelty,
+                            certainty: Math.max(0, Math.min(1, 1 - novelty * 0.5)),
+                        }, text.slice(0, 50));
+                    }
+                    catch { /* affect is best-effort */ }
+                }
+                catch (e) {
+                    if (config?.logging)
+                        console.warn('[AgentBrain] phase2 processing failed:', e.message);
                 }
                 interactionCount++;
             }
@@ -263,6 +498,23 @@ const _plugin = definePluginEntry({
                     senderName: lastMessageContext.senderName,
                     timestamp: lastMessageContext.timestamp,
                 });
+                // Knowledge extraction (structured facts)
+                knowledgeExtractor.extract(lastMessageContext.message, responseText, {
+                    senderName: lastMessageContext.senderName,
+                    timestamp: lastMessageContext.timestamp,
+                    previousFacts: knowledgeExtractor.getActiveFacts(),
+                });
+                // Lesson learning (detect corrections)
+                const lesson = lessonLearner.analyze({
+                    userMessage: lastMessageContext.message,
+                    agentResponse: responseText,
+                    previousAgentResponse: lastAgentResponse,
+                    senderName: lastMessageContext.senderName,
+                    timestamp: lastMessageContext.timestamp,
+                });
+                if (lesson && config?.logging) {
+                    console.log(`[AgentBrain] Lesson learned: ${lesson.type} — ${lesson.right.slice(0, 60)}`);
+                }
                 // Detect sentiment for reward
                 const sentiment = amygdala.detectSentiment(lastMessageContext.message);
                 // Check if response contains tool error indicators
@@ -286,6 +538,8 @@ const _plugin = definePluginEntry({
                     source: 'implicit',
                     context: lastMessageContext.message.slice(0, 50),
                 });
+                // Phase 5: Record agent reply timing for feedback analysis
+                feedbackAnalyzer.recordAgentReply();
                 // Anterior Cingulate: reflect on significant tasks
                 if (config?.enableReflection !== false) {
                     const classification = thalamus.classify(lastMessageContext);
@@ -301,6 +555,10 @@ const _plugin = definePluginEntry({
                 }
                 // Prefrontal: complete plan
                 prefrontal.completePlan();
+                // Update personality influence with latest traits
+                personalityInfluence.updateTraits(cingulate.getPersonality());
+                // Track last response for lesson learning
+                lastAgentResponse = responseText;
             }
             catch (err) {
                 if (config?.logging) {
@@ -317,14 +575,28 @@ const _plugin = definePluginEntry({
             if (!initialized)
                 return;
             try {
-                // Persist all module states
+                // Persist all module states via SQL adapter
                 await amygdala.persist();
+                await neurochem.persist();
                 await cingulate.persist();
                 await cerebellum.persist();
                 await basalGanglia.persist();
                 await prefrontal.persist();
+                // Persist new modules
+                const lessons = lessonLearner.getLessons();
+                if (lessons.length > 0) {
+                    await storage.writeFile('learning/lessons.md', JSON.stringify(lessons, null, 2));
+                }
+                const patterns = proactiveEngine.getPatterns();
+                if (patterns.length > 0) {
+                    await storage.writeFile('learning/patterns.md', JSON.stringify(patterns, null, 2));
+                }
+                const facts = knowledgeExtractor.getActiveFacts();
+                if (facts.length > 0) {
+                    await storage.writeFile('knowledge/facts.md', JSON.stringify(facts, null, 2));
+                }
                 if (config?.logging) {
-                    console.log(`[AgentBrain] Session ended — brain state persisted (${interactionCount} interactions)`);
+                    console.log(`[AgentBrain] Session ended — brain state persisted (${interactionCount} interactions, ${lessons.length} lessons, ${facts.length} facts)`);
                 }
             }
             catch (err) {
@@ -359,7 +631,9 @@ const _plugin = definePluginEntry({
                         parietal: true,
                         insula: true,
                         metacognition: true,
-                        // Phase 2 modules (v0.3.0)
+                        // Phase 3 module (v0.5.0) — REAL, wired into amygdala
+                        neurochemistry: true,
+                        // Phase 2 modules (v0.4.1) — declared so gateway won't override
                         hypothalamus: true,
                         brainstem: true,
                         corpusCallosum: true,
@@ -367,6 +641,7 @@ const _plugin = definePluginEntry({
                         theoryOfMind: true,
                     },
                     emotionalState: amygdala.getState(),
+                    neurochemistry: { levels: neurochem.getState(), signal: neurochem.describe() },
                     personality: cingulate.getPersonality(),
                     performanceStats: cingulate.getPerformanceStats(),
                     memoryStats: hippocampus.getStats(),
@@ -378,12 +653,13 @@ const _plugin = definePluginEntry({
                     parietalState: parietal.getState(),
                     insulaState: insula.getState(),
                     metacognitionState: metacognition.getState(),
-                    // Phase 2 module states
+                    // Phase 2 modules (v0.6.0) — REAL state from wired modules
                     hypothalamusState: hypothalamus.getState(),
                     brainstemState: brainstem.getState(),
                     corpusCallosumState: corpusCallosum.getState(),
                     globalWorkspaceState: globalWorkspace.getState(),
                     theoryOfMindState: theoryOfMind.getState(),
+                    affectState: affect.getState(),
                 };
             },
         });

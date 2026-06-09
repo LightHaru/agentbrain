@@ -145,7 +145,7 @@ export declare class ParietalLobe {
      */
     shiftAttention(taskId: string): void;
     /**
-     * Perform numerical calculation
+     * Perform numerical calculation (safe, no eval)
      */
     performCalculation(expression: string): number;
     /**

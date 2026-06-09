@@ -21,6 +21,7 @@ export declare class Thalamus {
     private detectIntent;
     /**
      * Detect urgency level
+     * Phase 4: status-check questions default to 'medium', not high
      */
     private detectUrgency;
     /**

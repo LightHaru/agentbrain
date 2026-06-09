@@ -49,7 +49,7 @@ export class Hippocampus {
       dbPath: `${config.brainDir}/vector.db`,
       dims: 768,
       maxResults: config.maxRecallResults,
-      minSimilarity: 0.25,
+      minSimilarity: 0.5,
     }, brainDb);
   }
 
@@ -66,10 +66,23 @@ export class Hippocampus {
 
   /**
    * Recall relevant memories using vector similarity + keyword hybrid
+   * Phase 3 enhancement: filter by task-type tags to reduce noise
    */
   async recall(query: string, topic: string): Promise<Memory[]> {
-    // Primary: vector-based semantic recall
-    const vectorResults = await this.vectorMemory.recall(query, this.memories, topic);
+    // Detect task type from topic/query for filtering
+    const taskType = this.detectTaskType(query, topic);
+    
+    // Filter candidate pool by task type first (reduce noise)
+    const candidates = taskType
+      ? this.memories.filter(m => 
+          m.tags.includes(taskType) || 
+          m.tags.includes(topic) ||
+          m.type === 'procedural' // always consider how-to memories
+        )
+      : this.memories;
+
+    // Primary: vector-based semantic recall on filtered candidates
+    const vectorResults = await this.vectorMemory.recall(query, candidates, topic);
 
     if (vectorResults.length > 0) {
       // Update access metadata only for high-scoring results
@@ -84,6 +97,21 @@ export class Hippocampus {
 
     // Fallback: keyword-based recall (for when vector search returns nothing)
     return this.keywordRecall(query, topic);
+  }
+
+  /**
+   * Detect task type from query/topic for targeted recall
+   */
+  private detectTaskType(query: string, topic: string): string | null {
+    const lower = (query + ' ' + topic).toLowerCase();
+    
+    if (/code|bug|api|server|deploy|build|test|fix|implement/.test(lower)) return 'coding';
+    if (/content|blog|seo|article|write/.test(lower)) return 'content';
+    if (/crypto|token|coin|defi|swap|trade|contract/.test(lower)) return 'crypto';
+    if (/server|vps|nginx|docker|ssh|firewall/.test(lower)) return 'ops';
+    if (/plan|project|roadmap|milestone/.test(lower)) return 'project';
+    
+    return null; // no filter, use all memories
   }
 
   /**

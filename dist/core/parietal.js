@@ -240,13 +240,59 @@ class ParietalLobe {
     // Numerical & Logical Reasoning
     // ==========================================================================
     /**
-     * Perform numerical calculation
+     * Perform numerical calculation (safe, no eval)
      */
     performCalculation(expression) {
         try {
-            // Simple eval (in production, use safe math parser)
-            // eslint-disable-next-line no-eval
-            return eval(expression);
+            // Safe arithmetic: only allow digits, operators, parentheses, decimal points
+            const sanitized = expression.replace(/\s/g, '');
+            if (!/^[\d+\-*/().%]+$/.test(sanitized)) {
+                return NaN;
+            }
+            // Simple recursive descent parser for basic arithmetic
+            let pos = 0;
+            const peek = () => sanitized[pos];
+            const next = () => sanitized[pos++];
+            const parseNumber = () => {
+                let num = '';
+                if (peek() === '(') {
+                    next(); // skip (
+                    const result = parseExpr();
+                    next(); // skip )
+                    return result;
+                }
+                while (pos < sanitized.length && /[\d.]/.test(peek())) {
+                    num += next();
+                }
+                return parseFloat(num);
+            };
+            const parseFactor = () => {
+                let result = parseNumber();
+                while (pos < sanitized.length && (peek() === '*' || peek() === '/' || peek() === '%')) {
+                    const op = next();
+                    const right = parseNumber();
+                    if (op === '*')
+                        result *= right;
+                    else if (op === '/')
+                        result /= right;
+                    else
+                        result %= right;
+                }
+                return result;
+            };
+            const parseExpr = () => {
+                let result = parseFactor();
+                while (pos < sanitized.length && (peek() === '+' || peek() === '-')) {
+                    const op = next();
+                    const right = parseFactor();
+                    if (op === '+')
+                        result += right;
+                    else
+                        result -= right;
+                }
+                return result;
+            };
+            return parseExpr();
         }
         catch (error) {
             return NaN;
@@ -276,16 +322,39 @@ class ParietalLobe {
      * Logical reasoning: check if condition is satisfied
      */
     evaluateCondition(condition, context) {
-        // Simple condition evaluation
-        // In production, use safe expression evaluator
+        // Safe condition evaluation without eval
         try {
             // Replace variables with values
             let expr = condition;
             for (const [key, value] of Object.entries(context)) {
                 expr = expr.replace(new RegExp(`\\b${key}\\b`, 'g'), JSON.stringify(value));
             }
-            // eslint-disable-next-line no-eval
-            return eval(expr);
+            // Simple comparison parser instead of eval
+            // Supports: ==, !=, >, <, >=, <=, &&, ||
+            const comparisons = {
+                '===': (a, b) => a === b,
+                '!==': (a, b) => a !== b,
+                '==': (a, b) => a == b,
+                '!=': (a, b) => a != b,
+                '>=': (a, b) => a >= b,
+                '<=': (a, b) => a <= b,
+                '>': (a, b) => a > b,
+                '<': (a, b) => a < b,
+            };
+            // Try simple "a op b" pattern
+            for (const [op, fn] of Object.entries(comparisons)) {
+                if (expr.includes(op)) {
+                    const parts = expr.split(op).map(s => s.trim());
+                    if (parts.length === 2) {
+                        const a = JSON.parse(parts[0]);
+                        const b = JSON.parse(parts[1]);
+                        return fn(a, b);
+                    }
+                }
+            }
+            // Fallback: try parsing as boolean literal
+            const trimmed = expr.trim().toLowerCase();
+            return trimmed === 'true' || trimmed === '1';
         }
         catch (error) {
             return false;

@@ -96,6 +96,10 @@ export declare class AnteriorCingulate {
      */
     getPersonality(): PersonalityTraits;
     /**
+     * Update personality traits (Phase 5: learning from feedback)
+     */
+    updatePersonality(newTraits: PersonalityTraits): void;
+    /**
      * Persist reflection data and updated personality
      */
     persist(): Promise<void>;

@@ -30,6 +30,9 @@ export interface InjectionContext {
     activeHabits: Habit[];
     workingMemory: WorkingMemoryItem[];
     rewardTrend: number;
+    lessonsContext?: string;
+    styleDirectives?: string;
+    suggestionsContext?: string;
 }
 export interface InjectionOptions {
     /** Maximum tokens budget (approximate, based on ~4 chars/token) */

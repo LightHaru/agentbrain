@@ -78,6 +78,11 @@ export class ContextInjector {
 
     lines.push('## Brain State (AgentBrain — auto-injected)');
 
+    // Phase 4: Status-check hint (inject early for high visibility)
+    if (context.classification.topic === 'status-check') {
+      lines.push('⚡ Status-check query detected: keep reply brief (≤3 sentences), focus on current state + blockers + ETA.');
+    }
+
     // Emotional state (compact)
     if (opts.includeEmotions) {
       const { mood, valence, arousal } = context.emotionalState;

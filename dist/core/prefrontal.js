@@ -183,9 +183,9 @@ class PrefrontalCortex {
             addedAt: new Date().toISOString(),
             source,
         });
-        // Keep only top 5 most relevant items
+        // Keep only top 7 most relevant items (expanded from 5)
         this.workingMemory.sort((a, b) => b.relevance - a.relevance);
-        this.workingMemory = this.workingMemory.slice(0, 5);
+        this.workingMemory = this.workingMemory.slice(0, 7);
     }
     /**
      * Get working memory items

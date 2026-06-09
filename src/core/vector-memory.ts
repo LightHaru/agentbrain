@@ -167,7 +167,7 @@ export class VectorMemory {
       ),
       dims: config.dims || 768,
       maxResults: config.maxResults || 10,
-      minSimilarity: config.minSimilarity || 0.3,
+      minSimilarity: config.minSimilarity || 0.5,
     };
     this.embedder = new SimpleEmbedder(this.config.dims);
     this.brainDb = brainDb || null;

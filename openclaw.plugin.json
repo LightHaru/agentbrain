@@ -1,6 +1,7 @@
 {
   "id": "agentbrain",
-  "name": "AgentBrain",
+  "name": "@klsgg/agentbrain",
+  "kind": "plugin",
   "description": "Brain-inspired cognitive architecture. Self-evolving personality, memory, emotions, skill learning, and reward adaptation. Injects brain context into every prompt.",
   "activation": {
     "onStartup": true
@@ -62,9 +63,16 @@
       "maxInjectionTokens": {
         "type": "integer",
         "description": "Maximum tokens for brain context injection",
-        "default": 250,
-        "minimum": 50,
-        "maximum": 500
+        "default": 450,
+        "minimum": 120,
+        "maximum": 800
+      },
+      "graphRecallDepth": {
+        "type": "integer",
+        "description": "Relationship hops to include from AgentBrain graph memory during prompt injection",
+        "default": 2,
+        "minimum": 0,
+        "maximum": 3
       },
       "maintenanceInterval": {
         "type": "integer",
@@ -92,16 +100,24 @@
       "agentbrain_emotions",
       "agentbrain_skills",
       "agentbrain_memories",
+      "agentbrain_graph",
       "agentbrain_reflect",
       "agentbrain_template_apply",
       "agentbrain_template_list",
       "agentbrain_snapshot"
     ]
   },
-  "version": "0.2.0",
+  "version": "0.8.1",
   "author": "KLSGG",
   "repository": "https://github.com/KLSGG/agentbrain",
   "license": "MIT",
+  "compat": [
+    "activation-config-path-hint"
+  ],
+  "build": {
+    "openclawVersion": ">=2026.3.24",
+    "entry": "dist/plugin/entry.js"
+  },
   "keywords": [
     "brain",
     "cognitive-architecture",
