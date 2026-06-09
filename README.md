@@ -1,59 +1,83 @@
 <p align="center">
-  <img src="docs/assets/banner.png" alt="AgentBrain — brain-inspired cognitive architecture for AI agents" width="100%">
+  <img src="https://raw.githubusercontent.com/LightHaru/agentbrain/main/docs/assets/agentbrain-hero.png" alt="AgentBrain — Brain-Inspired Cognitive Architecture for AI Agents" width="100%">
 </p>
 
-# 🧠 AgentBrain
+<h1 align="center">🧠 AgentBrain</h1>
 
-> **Give your AI agent a brain.** Persistent memory, a personality that evolves, neurochemistry-driven moods, and the ability to learn from its mistakes — all running locally, with zero extra token cost.
+<p align="center">
+  <strong>Give your AI agent a brain.</strong><br>
+  Memory that persists. Personality that evolves. Emotions that feel real.<br>
+  All running locally, with zero extra token cost.
+</p>
 
-[![Version](https://img.shields.io/badge/version-0.8.1-blue)]()
-[![Storage](https://img.shields.io/badge/storage-SQLite-orange)]()
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+<p align="center">
+  <a href="https://www.npmjs.com/package/@lightharu/agentbrain"><img src="https://img.shields.io/npm/v/@lightharu/agentbrain?color=blue&label=npm" alt="npm version"></a>
+  <a href="https://clawhub.ai/lightharu/agentbrain"><img src="https://img.shields.io/badge/ClawHub-0.9.0-orange" alt="ClawHub"></a>
+  <a href="https://github.com/LightHaru/agentbrain"><img src="https://img.shields.io/github/stars/LightHaru/agentbrain?style=social" alt="GitHub stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+</p>
+
+<p align="center">
+  <a href="#-why-agentbrain">Why?</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-documentation">Docs</a> •
+  <a href="README.vi.md">🇻🇳 Tiếng Việt</a>
+</p>
 
 ---
 
-## Why AgentBrain?
+## 🎯 Why AgentBrain?
 
-Most AI agents are amnesiacs. Every conversation starts from zero — they forget who you are, repeat mistakes you already corrected, and respond with the same flat tone whether you just shipped a release or lost a week of work.
+**Most AI agents are amnesiacs.** They forget who you are between conversations, repeat mistakes you already corrected, and respond with the same flat tone whether you just shipped a release or lost a week of work.
 
-AgentBrain fixes that. It sits between the incoming message and your agent, quietly doing what a brain does: recalling what matters, reading the emotional context, learning from corrections, and shaping how the agent responds — then injecting a compact (~200 token) cognitive briefing into the prompt.
+**AgentBrain fixes that.** It gives your agent:
 
-```text
-Without AgentBrain          With AgentBrain
-──────────────────          ──────────────────
-"Who are you again?"    →    "Welcome back — last time we were
-                              debugging the deploy script."
-repeats corrected bug   →    "Skipping that approach, you told me
-                              it breaks the build."
-flat, stateless tone    →    mood + trust adapt to how the
-                              relationship has actually gone
+- 🧠 **Persistent memory** — remembers conversations, facts, and corrections permanently
+- 🎭 **Evolving personality** — traits like warmth and directness adapt based on interactions
+- 💭 **Emotional awareness** — tracks mood, builds trust, reads the room
+- 🧪 **Neurochemistry** — dopamine/serotonin/cortisol give emotions real momentum
+- 📚 **Learning from mistakes** — "don't do X" is remembered forever, not repeated next turn
+- 🔮 **Proactive suggestions** — surfaces helpful actions based on observed patterns
+
+### Before vs After
+
+```diff
+Without AgentBrain                    With AgentBrain
+─────────────────────                 ─────────────────────
+"Who are you again?"              →   "Welcome back! Last time we were
+                                      debugging the deploy script."
+
+Repeats corrected mistake         →   "Skipping that approach — you told
+                                      me it breaks the build."
+
+Flat, stateless tone              →   Mood + trust adapt to how the
+                                      relationship has actually gone
+
+Forgets context after 10 turns    →   Recalls relevant details from weeks ago
+                                      via semantic memory search
 ```
 
 ---
 
-## Overview
-
-AgentBrain is a plugin for [OpenClaw](https://openclaw.ai) that gives any agent real cognitive continuity:
-
-- **Persistent memory** — episodic, semantic, and procedural recall via semantic vector search
-- **Evolving personality** — traits like warmth and directness shift based on how interactions go
-- **Emotional awareness** — tracks mood, trust, and relationship depth over time
-- **Neurochemistry** — dopamine / serotonin / cortisol / oxytocin give mood real momentum instead of resetting every turn
-- **Learning from corrections** — remembers "don't do X" permanently, so mistakes aren't repeated
-- **Proactive behavior** — surfaces suggestions based on patterns it has observed
-- **Structured knowledge** — extracts facts, entities, and relationships into a queryable graph
-
-Everything runs locally on SQLite. No external API calls, no added token cost beyond the small in-prompt briefing.
-
----
-
-## Quick Start
+## ⚡ Quick Start
 
 ### Installation
 
+**Via OpenClaw CLI:**
 ```bash
-openclaw plugins install agentbrain
+openclaw plugins install @lightharu/agentbrain
+```
+
+**Via npm:**
+```bash
+npm install @lightharu/agentbrain
+```
+
+**Via ClawHub:**
+```bash
+clawhub package install @lightharu/agentbrain
 ```
 
 ### Configuration
@@ -64,12 +88,11 @@ Add to your `openclaw.json`:
 {
   "plugins": {
     "entries": {
-      "agentbrain": {
+      "lightharu-agentbrain": {
         "enabled": true,
         "config": {
           "brainDir": "~/.openclaw/data/agentbrain",
           "maxRecallResults": 10,
-          "maxInjectionTokens": 250,
           "enableReflection": true,
           "enableEmotions": true,
           "enableSkillTracking": true
@@ -80,129 +103,261 @@ Add to your `openclaw.json`:
 }
 ```
 
-That's it. AgentBrain hooks into OpenClaw's plugin lifecycle automatically.
+### Verify Installation
 
----
+```bash
+# Check plugin status
+openclaw plugins list
 
-## How It Works
-
-AgentBrain registers three hooks in OpenClaw:
-
-| Hook | What it does |
-|------|-------------|
-| `before_prompt_build` | Recalls relevant memories, generates style directives, injects ~200 tokens of brain context |
-| `message_received` | Classifies message, processes emotion, detects skills |
-| `message_sent` | Consolidates memory, extracts knowledge, detects corrections, tracks rewards |
-
-### On every incoming message:
-
-1. **Classify** — intent, urgency, topic, tone
-2. **Recall** — find relevant memories via embedding similarity (3-tier: local model → cache → TF-IDF)
-3. **Emotion** — update mood, detect sentiment, track relationship
-4. **Lessons** — check if past corrections apply to this context
-5. **Style** — generate personality-driven directives (e.g., "be direct", "warn about risks")
-6. **Inject** — append brain context to the agent's prompt (~200 tokens)
-
-### After every response:
-
-1. **Consolidate** — store new memories (deduplicated by content hash)
-2. **Extract** — structured facts and entities from the conversation
-3. **Learn** — detect if user corrected the agent, store as lesson
-4. **Reflect** — evaluate task outcome, adjust personality traits
-5. **Persist** — write all state to SQLite
-
----
-
-## Architecture
-
-AgentBrain is organized into modules inspired by neuroscience:
-
-```mermaid
-flowchart TB
-    IN([Incoming message]) --> THAL[Thalamus<br/>classify]
-    THAL --> HIP[Hippocampus<br/>recall memory]
-    THAL --> AMY[Amygdala<br/>emotion + threat]
-    AMY <--> NEU[Neurochemistry<br/>DA / 5HT / COR / OXT]
-    HIP --> PFC[Prefrontal<br/>planning]
-    AMY --> STYLE[PersonalityInfluence<br/>style directives]
-    PFC --> STYLE
-    STYLE --> INJ[[Inject ~200 tokens<br/>into agent prompt]]
-    INJ --> OUT([Agent responds])
-    OUT --> CONS[Hippocampus<br/>consolidate]
-    OUT --> KNOW[KnowledgeExtractor<br/>facts + entities]
-    OUT --> LESS[LessonLearner<br/>corrections]
-    OUT --> REFL[Cingulate<br/>reflect + evolve traits]
-    CONS & KNOW & LESS & REFL --> DB[(SQLite brain.db)]
+# Inspect brain state
+openclaw tools call agentbrain_status
 ```
 
-<details>
-<summary>Module map (ASCII)</summary>
+That's it! AgentBrain will automatically:
+- Inject ~200 tokens of cognitive context into every prompt
+- Remember conversations permanently
+- Learn from corrections
+- Evolve personality traits based on interactions
 
+---
+
+## ✨ Features
+
+### 🧠 Memory System
+
+**Three types of memory:**
+- **Episodic** — conversations, events ("You asked about deploy scripts yesterday")
+- **Semantic** — facts, knowledge ("The API key is in .env.local")
+- **Procedural** — skills, habits ("User prefers Markdown code blocks")
+
+**Smart recall via 3-tier fallback:**
+1. Local embedding model (all-MiniLM-L6-v2, 384D)
+2. OpenClaw embedding cache (if available)
+3. TF-IDF keyword search (always works)
+
+**Deduplication:**
+- Content-hash based UNIQUE constraint in SQLite
+- No repeated memories, ever
+
+**Example:**
+```
+User: "Where did I put the API key?"
+Agent: [recalls] "You mentioned it's in .env.local (3 days ago)"
+```
+
+### 🎭 Personality Evolution
+
+**6 core traits** (0-100 scale):
+- `warmth` — how caring/supportive the agent is
+- `directness` — brevity vs detail
+- `protectiveness` — safety warnings, risk detection
+- `assertiveness` — opinion sharing, disagreement
+- `humor` — playfulness, sarcasm
+- `curiosity` — exploration, follow-up questions
+
+**Traits evolve based on:**
+- Task outcomes (success → confidence boost)
+- User feedback (praise → warmth increase)
+- Corrections (repeated mistakes → assertiveness increase)
+- Relationship depth (trust → more honesty)
+
+**Example:**
+```
+After 10 successful debugging sessions:
+  directness: 70 → 75 (more concise)
+  assertiveness: 65 → 70 (stronger opinions)
+  
+After user says "too verbose":
+  directness: 75 → 80 (even more brief)
+```
+
+### 💭 Emotional Intelligence
+
+**Real-time emotion tracking:**
+- Mood (happy, neutral, concerned, alarmed, etc.)
+- Valence (-1 to +1, negative to positive)
+- Arousal (0 to 1, calm to excited)
+
+**Relationship tracking per user:**
+- Trust level (0-100)
+- Interaction depth (0-100)
+- Sentiment history
+- Topic preferences
+
+**Neurochemistry system:**
+| Chemical | Effect | Use Case |
+|----------|--------|----------|
+| Dopamine | Reward, motivation | Task success → energy boost |
+| Serotonin | Mood floor, stability | Sustained praise → lasting good mood |
+| Cortisol | Stress, reactivity | Threats → lingering caution |
+| Oxytocin | Bonding, trust | Repeated positive interactions |
+
+**Example:**
+```
+User praises agent repeatedly
+→ Serotonin rises
+→ Mood floor lifts
+→ Agent stays positive even during boring tasks
+
+Critical bug detected
+→ Cortisol spike
+→ Agent stays alert for 30 minutes even after fix
+```
+
+### 📚 Lesson Learning
+
+**Automatic correction detection:**
+- "Don't do X" / "Đừng làm X"
+- "Not X, but Y" / "Không phải X mà là Y"
+- "Next time, do Y" / "Lần sau phải Y"
+- Frustration signals ("I told you already")
+
+**Reinforcement:**
+- Lessons gain confidence on repetition
+- High-confidence lessons inject into prompt automatically
+- Superseded lessons are marked obsolete
+
+**Example:**
+```
+User: "Don't use git push --force on main"
+→ Stored as lesson (confidence: 0.7)
+
+[Next time agent tries to push]
+Agent: [recalls lesson] "Skipping --force on main (you warned me about this)"
+
+[User confirms]
+→ Lesson confidence: 0.7 → 0.85
+```
+
+### 🔮 Proactive Suggestions
+
+**Pattern-based action proposals:**
+- "You usually run tests after code changes — want me to run them now?"
+- "It's 2 AM and you're still coding — should I remind you to commit before sleep?"
+- "Last 3 times you deployed, you forgot to update the changelog — should I check it?"
+
+**Configurable triggers:**
+- Frequency threshold (pattern must repeat N times)
+- Confidence threshold (only suggest if confident)
+- Time-based (e.g., only suggest backups after 8 PM)
+
+### 🛠️ Agent Tools
+
+**Runtime inspection:**
+```bash
+# Full brain status
+agentbrain_status
+
+# Personality traits
+agentbrain_personality
+
+# Emotional state + relationships
+agentbrain_emotions
+
+# Query memories
+agentbrain_memories query="deploy script" topic="coding"
+
+# Tracked skills
+agentbrain_skills
+
+# Manual reflection (after big tasks)
+agentbrain_reflect taskDescription="Deployed v2.0" outcome="success"
+
+# Snapshots (backup/restore)
+agentbrain_snapshot action="save" label="before-refactor"
+agentbrain_snapshot action="list"
+```
+
+---
+
+## 🏗️ Architecture
+
+AgentBrain is organized into **brain-inspired modules**, each handling a specific cognitive function:
+
+```
 ┌─────────────────────────────────────────────────────────┐
-│                      AgentBrain                           │
+│                      AgentBrain                          │
 ├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  Core Cognition                                          │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐             │
-│  │Hippocampus│ │Prefrontal │ │ Amygdala  │             │
-│  │  Memory   │ │ Planning  │ │ Emotions  │             │
-│  └───────────┘ └───────────┘ └───────────┘             │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐             │
-│  │Cerebellum │ │  Basal    │ │ Cingulate │             │
-│  │  Skills   │ │ Ganglia   │ │Reflection │             │
-│  └───────────┘ └───────────┘ └───────────┘             │
-│                                                          │
-│  Smart Modules (v0.3+)                                   │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐             │
-│  │  Vector   │ │ Knowledge │ │  Lesson   │             │
-│  │  Memory   │ │ Extractor │ │  Learner  │             │
-│  └───────────┘ └───────────┘ └───────────┘             │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐             │
-│  │Personality│ │ Proactive │ │ Embedding │             │
-│  │ Influence │ │  Engine   │ │  Engine   │             │
-│  └───────────┘ └───────────┘ └───────────┘             │
-│                                                          │
-│  Storage: SQLite (brain.db)                              │
-│  ┌─────────────────────────────────────────────┐        │
-│  │ memories │ facts │ entities │ lessons │ ...  │        │
-│  └─────────────────────────────────────────────┘        │
-│                                                          │
+│  Sensory Input                                           │
+│  ┌─────────────┐                                         │
+│  │  Thalamus   │  Message classification                │
+│  │  (gateway)  │  (intent, urgency, topic, tone)        │
+│  └─────────────┘                                         │
+│         │                                                │
+│         ├──────────┬──────────┬──────────┐              │
+│         ▼          ▼          ▼          ▼              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │Hippocampus│ │ Amygdala │ │Prefrontal│ │Cerebellum│  │
+│  │  Memory   │ │ Emotions │ │ Planning │ │  Skills  │  │
+│  │  Recall   │ │   Trust  │ │  Goals   │ │  Habits  │  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│         │          │          │          │              │
+│         └──────────┴──────────┴──────────┘              │
+│                     │                                    │
+│                     ▼                                    │
+│         ┌─────────────────────┐                         │
+│         │ Context Injector    │                         │
+│         │ (~200 tokens)       │                         │
+│         └─────────────────────┘                         │
+│                     │                                    │
+│                     ▼                                    │
+│              [Agent Prompt]                              │
+│                     │                                    │
+│                     ▼                                    │
+│              [Agent Response]                            │
+│                     │                                    │
+│         ┌───────────┴───────────┐                       │
+│         ▼           ▼           ▼                       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐               │
+│  │  Memory  │ │ Knowledge│ │  Lesson  │               │
+│  │Consolidate│ │Extractor │ │ Learner  │               │
+│  └──────────┘ └──────────┘ └──────────┘               │
+│         │           │           │                       │
+│         └───────────┴───────────┘                       │
+│                     │                                    │
+│                     ▼                                    │
+│             ┌──────────────┐                            │
+│             │ SQLite DB    │                            │
+│             │  brain.db    │                            │
+│             └──────────────┘                            │
 └─────────────────────────────────────────────────────────┘
 ```
 
-</details>
+### Core Modules
 
+| Module | Function | Key Features |
+|--------|----------|--------------|
+| **Thalamus** | Sensory gating | Classifies intent, urgency, topic, tone |
+| **Hippocampus** | Memory | Formation, deduplication, vector recall |
+| **Amygdala** | Emotion | Sentiment, threat detection, relationships |
+| **Prefrontal Cortex** | Planning | Working memory, goal management |
+| **Cerebellum** | Motor learning | Skill proficiency, habit detection |
+| **Basal Ganglia** | Rewards | Motivation ranking, reinforcement |
+| **Anterior Cingulate** | Reflection | Self-assessment, personality evolution |
+| **Temporal Lobe** | Language | Semantic extraction, concept mapping |
+| **Parietal Lobe** | Integration | Attention, sensory fusion |
+| **Insula** | Interoception | User state modeling (frustration, satisfaction) |
 
-### Module Reference
+### Smart Modules (v0.3+)
 
 | Module | Purpose |
 |--------|---------|
-| **Thalamus** | Message classification (intent, urgency, topic) |
-| **Hippocampus** | Memory formation, deduplication, vector recall |
-| **Amygdala** | Emotion processing, threat detection, relationship tracking |
-| **Prefrontal Cortex** | Planning, working memory, goal management |
-| **Cerebellum** | Skill proficiency tracking, habit detection |
-| **Basal Ganglia** | Reward processing, motivation ranking |
-| **Anterior Cingulate** | Self-reflection, personality trait evolution |
-| **Temporal Lobe** | Language comprehension, semantic extraction |
-| **Parietal Lobe** | Attention allocation, sensory integration |
-| **Insula** | User state modeling (frustration, satisfaction) |
-| **Neurochemistry** | Dopamine/serotonin/cortisol/oxytocin modulate mood with momentum + amygdala hijack on threats |
-| **VectorMemory** | Embedding-based semantic recall with 3-tier fallback |
-| **EmbeddingEngine** | Local embeddings via Transformers.js (all-MiniLM-L6-v2) |
-| **KnowledgeExtractor** | Structured fact/entity extraction with supersession |
-| **LessonLearner** | Correction detection, lesson storage, reinforcement |
-| **PersonalityInfluence** | Trait-to-directive translation, context-aware styling |
+| **VectorMemory** | Embedding-based semantic recall (3-tier fallback) |
+| **EmbeddingEngine** | Local Transformers.js model (all-MiniLM-L6-v2) |
+| **KnowledgeExtractor** | Structured fact/entity extraction |
+| **LessonLearner** | Correction detection, lesson storage |
+| **PersonalityInfluence** | Trait-to-directive translation |
 | **ProactiveEngine** | Pattern-based action suggestions |
+| **Neurochemistry** | Dopamine/serotonin/cortisol/oxytocin modeling |
 
 ---
 
-## Storage
+## 💾 Storage
 
-All state lives in a single SQLite file (`brain.db`):
+All brain state lives in a **single SQLite file** (`brain.db`):
 
-| Table | Purpose |
-|-------|---------|
+| Table | Contents |
+|-------|----------|
 | `memories` | Episodic, semantic, procedural memories (UNIQUE on content hash) |
 | `facts` | Structured knowledge (subject → relation → object) |
 | `entities` | Extracted entities (people, tools, addresses) |
@@ -212,172 +367,309 @@ All state lives in a single SQLite file (`brain.db`):
 | `personality` | Evolving trait values |
 | `reflections` | Task outcomes and self-assessments |
 | `skills` | Proficiency tracking per skill category |
+| `neurochemistry` | Chemical levels (dopamine, serotonin, etc.) |
 
 ### Why SQLite?
 
-- **No duplicates** — UNIQUE constraints at the database level
-- **Fast queries** — indexed columns, no regex parsing
-- **Atomic writes** — no corrupted half-written files
-- **Single file** — easy backup, easy migration
-- **Zero config** — no external database server needed
+✅ **No duplicates** — UNIQUE constraints at DB level  
+✅ **Fast queries** — indexed columns, no regex parsing  
+✅ **Atomic writes** — no corrupted half-written files  
+✅ **Single file** — easy backup (`cp brain.db brain-backup.db`)  
+✅ **Zero config** — no external database server  
+✅ **Portable** — move the file, move the brain  
 
 ---
 
-## Memory Recall
+## 📖 Documentation
 
-AgentBrain uses a 3-tier fallback for memory retrieval:
+### User Guides
 
-1. **Transformers.js** — local `all-MiniLM-L6-v2` model (384 dims, ~22MB, downloads on first use)
-2. **OpenClaw embedding cache** — reuses host's cached embeddings if available
-3. **TF-IDF** — lightweight keyword-based fallback when embeddings unavailable
+- [Installation Guide](docs/installation.md)
+- [Configuration Reference](docs/configuration.md)
+- [Memory System Deep Dive](docs/memory-system.md)
+- [Personality & Emotions](docs/personality-emotions.md)
+- [Lesson Learning](docs/lesson-learning.md)
+- [Agent Tools Reference](docs/agent-tools.md)
 
-Recall is boosted by:
-- Recency (recently accessed memories score higher)
-- Confidence (high-confidence memories prioritized)
-- Topic match (memories tagged with current topic get a boost)
+### Developer Guides
 
----
+- [Architecture Overview](docs/architecture.md)
+- [Module Reference](docs/modules.md)
+- [Storage Schema](docs/storage-schema.md)
+- [Plugin Development](docs/plugin-dev.md)
+- [Testing Guide](docs/testing.md)
 
-## Personality System
+### Vietnamese Documentation
 
-Traits are defined on a 0-100 scale and evolve based on interactions:
-
-| Trait | Effect on output |
-|-------|-----------------|
-| `warmth` | Tone warmth, kaomoji usage, concern for user |
-| `directness` | Bluntness, sentence length, hedging |
-| `protectiveness` | Risk warnings, safety behavior |
-| `assertiveness` | Opinion sharing, disagreement willingness |
-| `humor` | Playfulness, sarcasm, teasing |
-| `curiosity` | Follow-up questions, exploration |
-
-The **PriorityEnforcer** ensures brain-driven personality never overrides the agent's core identity files (SOUL.md, AGENTS.md).
+- [🇻🇳 Hướng dẫn cài đặt](docs/vi/installation.md)
+- [🇻🇳 Cấu hình chi tiết](docs/vi/configuration.md)
+- [🇻🇳 Hệ thống ký ức](docs/vi/memory-system.md)
+- [🇻🇳 Tính cách & Cảm xúc](docs/vi/personality-emotions.md)
 
 ---
 
-## Neurochemistry
+## 🚀 Getting Started Tutorial
 
-Instead of snapping to each message, AgentBrain models four neuromodulators that give emotion **momentum** — good moods build and linger, stress lingers, and acute threats can hijack everything.
-
-| Chemical | Role | Decay | Effect when high |
-|----------|------|-------|------------------|
-| **Dopamine** | Reward / motivation | Fast | More energy (arousal), reward-seeking, small valence lift |
-| **Serotonin** | Mood floor / wellbeing | Slow | Higher baseline mood, calmer, more emotionally stable |
-| **Cortisol** | Stress / threat | Slow | Suppressed valence, raised arousal, more reactive (mood swings) |
-| **Oxytocin** | Bonding / trust | Slow-medium | Warmer, more trusting toward the user |
-
-How it shapes behavior:
-
-- **Dynamic inertia** — high serotonin makes mood stable; high cortisol makes it swing. This replaces a fixed inertia constant.
-- **Mood momentum** — repeated praise raises the serotonin floor, so a good mood persists across turns instead of resetting.
-- **Lingering stress** — cortisol decays slowly, so the agent stays a little on-guard after a threat even once the conversation calms down.
-- **Amygdala hijack** — a high/critical threat (e.g. a scam link) overrides a good mood outright, forcing an `alarmed` state regardless of how happy the agent was. A protective agent should never stay "excited" while danger is on the table.
-
-Levels drift back toward baseline on each heartbeat, so nothing runs away permanently. Inspect live values with `agentbrain_status` (`neurochemistry.levels` + `neurochemistry.signal`).
-
----
-
-## Lesson Learning
-
-When a user corrects the agent, AgentBrain:
-
-1. **Detects** the correction signal (explicit correction, frustration, redirect)
-2. **Extracts** what went wrong and what should happen instead
-3. **Stores** as a lesson with confidence score
-4. **Reinforces** on repetition (confidence increases)
-5. **Injects** relevant lessons into future prompts
-
-Supported correction patterns (English and Vietnamese):
-- "Don't do X" / "Đừng làm X"
-- "Not X, but Y" / "Không phải X mà là Y"
-- "Next time, do Y" / "Lần sau phải Y"
-- Frustration signals ("I told you already" / "Bảo rồi mà")
-
----
-
-## Agent Tools
-
-AgentBrain registers these tools for runtime inspection:
-
-| Tool | Description |
-|------|-------------|
-| `agentbrain_status` | Full brain status (modules, stats, emotion, personality) |
-| `agentbrain_personality` | Current personality traits and performance stats |
-| `agentbrain_emotions` | Emotional state and relationship data |
-| `agentbrain_memories` | Query stored memories |
-| `agentbrain_skills` | Tracked skills and detected habits |
-| `agentbrain_reflect` | Trigger manual self-reflection |
-| `agentbrain_snapshot` | Save/list brain state snapshots |
-| `agentbrain_template_list` | List available brain templates |
-| `agentbrain_template_apply` | Apply a brain template |
-
----
-
-## Development
+### 1. Install & Configure
 
 ```bash
-# Install dependencies
-npm install
+# Install AgentBrain
+openclaw plugins install @lightharu/agentbrain
 
-# Type check
-npx tsc --noEmit
-
-# Run tests
-npx vitest run
-
-# Build
-npx tsc
+# Verify installation
+openclaw plugins list | grep agentbrain
 ```
 
-### Project Structure
+Add to `openclaw.json`:
+```json
+{
+  "plugins": {
+    "entries": {
+      "lightharu-agentbrain": {
+        "enabled": true,
+        "config": {
+          "brainDir": "~/.openclaw/data/agentbrain",
+          "maxRecallResults": 10,
+          "enableReflection": true,
+          "enableEmotions": true
+        }
+      }
+    }
+  }
+}
+```
+
+Restart OpenClaw:
+```bash
+openclaw gateway restart
+```
+
+### 2. First Conversation
 
 ```
-src/
-├── core/                  # Brain modules
-│   ├── thalamus.ts        # Message classification
-│   ├── hippocampus.ts     # Memory formation & recall
-│   ├── amygdala.ts        # Emotion & relationships
-│   ├── cingulate.ts       # Reflection & personality
-│   ├── cerebellum.ts      # Skills & habits
-│   ├── basal-ganglia.ts   # Rewards & motivation
-│   ├── prefrontal.ts      # Planning & working memory
-│   ├── vector-memory.ts   # Embedding-based recall
-│   ├── embedding-engine.ts # Transformers.js integration
-│   ├── knowledge-extractor.ts
-│   ├── lesson-learner.ts
-│   ├── personality-influence.ts
-│   └── proactive-engine.ts
-├── storage/
-│   ├── brain-db.ts        # SQLite database layer
-│   ├── sql-adapter.ts     # Drop-in adapter for modules
-│   └── migrate-to-sql.ts  # Migration from .md files
-├── integration/
-│   ├── openclaw-plugin.ts # Plugin orchestration
-│   ├── context-injector.ts # Prompt injection builder
-│   └── priority-enforcer.ts # Identity priority system
-└── plugin/
-    └── entry.ts           # OpenClaw plugin entry point
+You: "I'm working on a deploy script for my Node.js app"
+Agent: [stores memory] "Got it! What deployment platform are you targeting?"
+
+[10 turns later...]
+
+You: "Remind me what I was working on?"
+Agent: [recalls memory] "You're building a deploy script for your Node.js app.
+       We discussed targeting Vercel and using environment variables."
+```
+
+### 3. Teach a Lesson
+
+```
+You: "Don't use 'rm -rf' in production scripts"
+Agent: [stores lesson] "Understood. I'll avoid 'rm -rf' in production contexts."
+
+[Next time agent suggests a script with 'rm -rf']
+Agent: [recalls lesson] "Skipping 'rm -rf' — you warned me this is dangerous in production."
+```
+
+### 4. Inspect Brain State
+
+```bash
+# Check current mood & personality
+openclaw tools call agentbrain_status
+
+# Query memories about "deploy"
+openclaw tools call agentbrain_memories query="deploy script"
+
+# View learned lessons
+openclaw tools call agentbrain_memories topic="lessons"
+```
+
+### 5. Backup Your Brain
+
+```bash
+# Create snapshot
+openclaw tools call agentbrain_snapshot action="save" label="before-refactor"
+
+# Or copy the DB file directly
+cp ~/.openclaw/data/agentbrain/brain.db ~/backups/brain-$(date +%Y%m%d).db
 ```
 
 ---
 
-## Requirements
+## 🔬 Advanced Usage
 
-- OpenClaw 2026.3.24+
-- Node.js 22+
-- ~50MB disk (SQLite DB + embedding model)
-- No GPU required
+### Custom Personality Template
+
+Create a personality template for specific use cases:
+
+```json
+{
+  "name": "Debugging Assistant",
+  "personality": {
+    "warmth": 50,
+    "directness": 90,
+    "assertiveness": 85,
+    "protectiveness": 95,
+    "humor": 30,
+    "curiosity": 80
+  },
+  "description": "Highly direct, protective, focused debugging partner"
+}
+```
+
+Apply it:
+```bash
+openclaw tools call agentbrain_template_apply templateId="debugging-assistant"
+```
+
+### Memory Pruning
+
+Control memory growth:
+
+```json
+{
+  "config": {
+    "memoryDecayRate": 0.05,
+    "minMemoryConfidence": 0.3,
+    "maxMemories": 1000
+  }
+}
+```
+
+- `memoryDecayRate`: confidence decay per day (0.05 = 5% per day)
+- `minMemoryConfidence`: prune memories below this threshold
+- `maxMemories`: hard limit (oldest pruned first)
+
+### Neurochemistry Tuning
+
+Adjust emotional responsiveness:
+
+```json
+{
+  "config": {
+    "neurochemistry": {
+      "dopamineDecayRate": 0.1,
+      "serotoninDecayRate": 0.02,
+      "cortisolDecayRate": 0.03,
+      "oxytocinDecayRate": 0.04
+    }
+  }
+}
+```
 
 ---
 
-## License
+## 📊 Example: Brain State Injection
 
-MIT
+When you send a message, AgentBrain injects ~200 tokens of context into the agent's prompt:
+
+```markdown
+## Brain State (AgentBrain — auto-injected)
+
+**Mood:** positive | Valence: +0.65 | Arousal: 0.45
+**Relationship:** depth 85/100, trust 92/100
+**Personality:** warmth↑70, assertiveness↑75, directness↑80, protectiveness↑85
+
+**Working Memory:**
+- User: "Where's the API key?"
+- User: "How do I deploy to Vercel?"
+
+**Relevant Memories:**
+- [episodic] User mentioned API key is in .env.local (2 days ago, conf: 0.85)
+- [semantic] Deployment target is Vercel (4 days ago, conf: 0.90)
+- [lesson] Don't use 'rm -rf' in production scripts (user warning, conf: 0.95)
+
+**Neurochemistry:** dopamine: 0.62, serotonin: 0.75, cortisol: 0.15, oxytocin: 0.80
+**Recent Feedback:** positive trend (+0.35 over last 10 turns)
+```
+
+This context shapes how the agent responds:
+- **Memory recall** prevents "who are you?" moments
+- **Mood & trust** influence tone warmth
+- **Lessons** prevent repeating past mistakes
+- **Personality traits** adjust directness/verbosity
 
 ---
 
-## Links
+## 🤝 Contributing
 
-- [OpenClaw](https://openclaw.ai) — The AI agent platform
-- [Plugin Docs](https://docs.openclaw.ai/plugins/building-plugins) — How to build OpenClaw plugins
-- [ClawHub](https://clawhub.ai) — Plugin marketplace
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Ways to contribute:**
+- 🐛 Report bugs via [GitHub Issues](https://github.com/LightHaru/agentbrain/issues)
+- 💡 Suggest features via [Discussions](https://github.com/LightHaru/agentbrain/discussions)
+- 📝 Improve documentation
+- 🧪 Add tests
+- 🔧 Submit PRs for bug fixes or features
+
+---
+
+## 📋 Requirements
+
+- **OpenClaw:** 2026.3.24 or later
+- **Node.js:** 22+ (for plugin runtime)
+- **Disk:** ~50MB (SQLite DB + embedding model)
+- **Memory:** ~100MB RAM (embedding model loaded on demand)
+- **GPU:** Not required (CPU embeddings via Transformers.js)
+
+---
+
+## 🗺️ Roadmap
+
+### v1.0 (Next Major Release)
+- [ ] Multi-agent memory sharing
+- [ ] Graph-based knowledge representation
+- [ ] Fine-tuned embedding model for agent contexts
+- [ ] Visual brain state dashboard (web UI)
+- [ ] Memory compression (long-term storage)
+
+### v0.10 (In Progress)
+- [x] Phase 5: Learning Loop (personality adapts from feedback)
+- [x] Phase 4: Context Reasoning (status-check short-circuit)
+- [x] Phase 3: Personalized Recall (task-type filter)
+- [ ] Cross-language memory (English ↔ Vietnamese)
+- [ ] Memory migration tools
+
+### Completed
+- [x] v0.9.0: Intelligence Upgrade (5 phases)
+- [x] v0.8.0: Generative affect via cognitive appraisal
+- [x] v0.7.0: Agent-neutral SDK engine
+- [x] v0.6.0: Brain completeness audit + Phase 2 emotional engine
+- [x] v0.4.0: Foundation modules + SQL storage
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## 🔗 Links
+
+- **GitHub:** https://github.com/LightHaru/agentbrain
+- **npm:** https://www.npmjs.com/package/@lightharu/agentbrain
+- **ClawHub:** https://clawhub.ai/lightharu/agentbrain
+- **OpenClaw:** https://openclaw.ai
+- **Docs:** https://docs.openclaw.ai/plugins/building-plugins
+
+---
+
+## 💬 Community
+
+- [Discord](https://discord.gg/openclaw) — Join the OpenClaw community
+- [GitHub Discussions](https://github.com/LightHaru/agentbrain/discussions) — Ask questions, share ideas
+- [Twitter](https://twitter.com/openclaw) — Follow for updates
+
+---
+
+## 🙏 Acknowledgments
+
+AgentBrain is inspired by:
+- **Neuroscience:** Brain architecture (Hippocampus, Amygdala, etc.)
+- **Cognitive Science:** Appraisal theory, memory consolidation
+- **AI Research:** Transformer embeddings, vector databases
+
+Special thanks to the OpenClaw team and community for feedback and support.
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ by <a href="https://github.com/LightHaru">LightHaru</a></sub>
+</p>
