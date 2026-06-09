@@ -1,27 +1,50 @@
+<p align="center">
+  <img src="docs/assets/banner.png" alt="AgentBrain — brain-inspired cognitive architecture for AI agents" width="100%">
+</p>
+
 # 🧠 AgentBrain
 
-> A brain-inspired cognitive architecture plugin for AI agents. Gives agents persistent memory, evolving personality, emotional awareness, and the ability to learn from mistakes.
+> **Give your AI agent a brain.** Persistent memory, a personality that evolves, neurochemistry-driven moods, and the ability to learn from its mistakes — all running locally, with zero extra token cost.
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue)]()
-[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen)]()
+[![Version](https://img.shields.io/badge/version-0.8.1-blue)]()
 [![Storage](https://img.shields.io/badge/storage-SQLite-orange)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
 ---
 
+## Why AgentBrain?
+
+Most AI agents are amnesiacs. Every conversation starts from zero — they forget who you are, repeat mistakes you already corrected, and respond with the same flat tone whether you just shipped a release or lost a week of work.
+
+AgentBrain fixes that. It sits between the incoming message and your agent, quietly doing what a brain does: recalling what matters, reading the emotional context, learning from corrections, and shaping how the agent responds — then injecting a compact (~200 token) cognitive briefing into the prompt.
+
+```text
+Without AgentBrain          With AgentBrain
+──────────────────          ──────────────────
+"Who are you again?"    →    "Welcome back — last time we were
+                              debugging the deploy script."
+repeats corrected bug   →    "Skipping that approach, you told me
+                              it breaks the build."
+flat, stateless tone    →    mood + trust adapt to how the
+                              relationship has actually gone
+```
+
+---
+
 ## Overview
 
-AgentBrain is a plugin for [OpenClaw](https://openclaw.ai) that adds cognitive capabilities to AI agents. Instead of treating every conversation as stateless, AgentBrain gives your agent:
+AgentBrain is a plugin for [OpenClaw](https://openclaw.ai) that gives any agent real cognitive continuity:
 
-- **Persistent memory** with semantic vector recall
-- **Personality** that evolves through interactions
-- **Emotional awareness** — mood, trust, relationship depth
-- **Learning from corrections** — remembers "don't do X" permanently
-- **Proactive behavior** — suggests actions based on observed patterns
-- **Structured knowledge** — extracts facts, entities, and relationships
+- **Persistent memory** — episodic, semantic, and procedural recall via semantic vector search
+- **Evolving personality** — traits like warmth and directness shift based on how interactions go
+- **Emotional awareness** — tracks mood, trust, and relationship depth over time
+- **Neurochemistry** — dopamine / serotonin / cortisol / oxytocin give mood real momentum instead of resetting every turn
+- **Learning from corrections** — remembers "don't do X" permanently, so mistakes aren't repeated
+- **Proactive behavior** — surfaces suggestions based on patterns it has observed
+- **Structured knowledge** — extracts facts, entities, and relationships into a queryable graph
 
-All processing runs locally. No external API calls. No additional token cost.
+Everything runs locally on SQLite. No external API calls, no added token cost beyond the small in-prompt briefing.
 
 ---
 
@@ -94,7 +117,27 @@ AgentBrain registers three hooks in OpenClaw:
 
 AgentBrain is organized into modules inspired by neuroscience:
 
+```mermaid
+flowchart TB
+    IN([Incoming message]) --> THAL[Thalamus<br/>classify]
+    THAL --> HIP[Hippocampus<br/>recall memory]
+    THAL --> AMY[Amygdala<br/>emotion + threat]
+    AMY <--> NEU[Neurochemistry<br/>DA / 5HT / COR / OXT]
+    HIP --> PFC[Prefrontal<br/>planning]
+    AMY --> STYLE[PersonalityInfluence<br/>style directives]
+    PFC --> STYLE
+    STYLE --> INJ[[Inject ~200 tokens<br/>into agent prompt]]
+    INJ --> OUT([Agent responds])
+    OUT --> CONS[Hippocampus<br/>consolidate]
+    OUT --> KNOW[KnowledgeExtractor<br/>facts + entities]
+    OUT --> LESS[LessonLearner<br/>corrections]
+    OUT --> REFL[Cingulate<br/>reflect + evolve traits]
+    CONS & KNOW & LESS & REFL --> DB[(SQLite brain.db)]
 ```
+
+<details>
+<summary>Module map (ASCII)</summary>
+
 ┌─────────────────────────────────────────────────────────┐
 │                      AgentBrain                           │
 ├─────────────────────────────────────────────────────────┤
@@ -127,6 +170,9 @@ AgentBrain is organized into modules inspired by neuroscience:
 └─────────────────────────────────────────────────────────┘
 ```
 
+</details>
+
+
 ### Module Reference
 
 | Module | Purpose |
@@ -141,6 +187,7 @@ AgentBrain is organized into modules inspired by neuroscience:
 | **Temporal Lobe** | Language comprehension, semantic extraction |
 | **Parietal Lobe** | Attention allocation, sensory integration |
 | **Insula** | User state modeling (frustration, satisfaction) |
+| **Neurochemistry** | Dopamine/serotonin/cortisol/oxytocin modulate mood with momentum + amygdala hijack on threats |
 | **VectorMemory** | Embedding-based semantic recall with 3-tier fallback |
 | **EmbeddingEngine** | Local embeddings via Transformers.js (all-MiniLM-L6-v2) |
 | **KnowledgeExtractor** | Structured fact/entity extraction with supersession |
@@ -205,6 +252,28 @@ Traits are defined on a 0-100 scale and evolve based on interactions:
 | `curiosity` | Follow-up questions, exploration |
 
 The **PriorityEnforcer** ensures brain-driven personality never overrides the agent's core identity files (SOUL.md, AGENTS.md).
+
+---
+
+## Neurochemistry
+
+Instead of snapping to each message, AgentBrain models four neuromodulators that give emotion **momentum** — good moods build and linger, stress lingers, and acute threats can hijack everything.
+
+| Chemical | Role | Decay | Effect when high |
+|----------|------|-------|------------------|
+| **Dopamine** | Reward / motivation | Fast | More energy (arousal), reward-seeking, small valence lift |
+| **Serotonin** | Mood floor / wellbeing | Slow | Higher baseline mood, calmer, more emotionally stable |
+| **Cortisol** | Stress / threat | Slow | Suppressed valence, raised arousal, more reactive (mood swings) |
+| **Oxytocin** | Bonding / trust | Slow-medium | Warmer, more trusting toward the user |
+
+How it shapes behavior:
+
+- **Dynamic inertia** — high serotonin makes mood stable; high cortisol makes it swing. This replaces a fixed inertia constant.
+- **Mood momentum** — repeated praise raises the serotonin floor, so a good mood persists across turns instead of resetting.
+- **Lingering stress** — cortisol decays slowly, so the agent stays a little on-guard after a threat even once the conversation calms down.
+- **Amygdala hijack** — a high/critical threat (e.g. a scam link) overrides a good mood outright, forcing an `alarmed` state regardless of how happy the agent was. A protective agent should never stay "excited" while danger is on the table.
+
+Levels drift back toward baseline on each heartbeat, so nothing runs away permanently. Inspect live values with `agentbrain_status` (`neurochemistry.levels` + `neurochemistry.signal`).
 
 ---
 
