@@ -32,6 +32,18 @@ describe('KnowledgeExtractor', () => {
       expect(pref).toBeDefined();
     });
 
+    it('extracts Vietnamese codenames without truncating dashed values', () => {
+      const result = extractor.extract(
+        'Hãy ghi nhớ: mật danh runtime của Aira là OpenClaw-Runtime-Star-20260615-C và anh thích câu trả lời cực ngắn.',
+        '',
+        { senderName: 'Sếp', timestamp: '2026-06-15T10:00:00Z', previousFacts: [] }
+      );
+      const codename = result.facts.find(f => f.relation === 'codename');
+      expect(codename).toBeDefined();
+      expect(codename!.subject).toContain('Aira');
+      expect(codename!.object).toBe('OpenClaw-Runtime-Star-20260615-C');
+    });
+
     it('extracts crypto addresses as entities', () => {
       const result = extractor.extract(
         'Ví miner: prl1pze77h93emczf0sxpgwyvzunf0mq5gsw8vter3jffsks44qq99mys0wq6qd',

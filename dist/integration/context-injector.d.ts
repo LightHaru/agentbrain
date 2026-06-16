@@ -30,9 +30,17 @@ export interface InjectionContext {
     activeHabits: Habit[];
     workingMemory: WorkingMemoryItem[];
     rewardTrend: number;
+    feeling?: {
+        label: string;
+        intensity: number;
+        valence: number;
+        arousal: number;
+    };
     lessonsContext?: string;
     styleDirectives?: string;
     suggestionsContext?: string;
+    factsContext?: string;
+    reasoningWhisper?: string;
 }
 export interface InjectionOptions {
     /** Maximum tokens budget (approximate, based on ~4 chars/token) */
@@ -59,6 +67,7 @@ export declare class ContextInjector {
      * Get personality traits that deviate notably from baseline (50)
      */
     private getNotableTraits;
+    private isLiveMarketReasoning;
     /**
      * Trim content to fit within token budget
      */

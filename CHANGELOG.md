@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased] - 2026-06-16
+
+### AgentBrain / OpenClaw Runtime
+- Added Qwen3-4B advisor configuration as `verifier-only` private support.
+- Kept Aira/OpenClaw explicitly in control of final action and final answer; AgentBrain/Qwen only critique, verify, and guide evidence quality.
+- Increased Brain Whisper budget and formatting so critical guidance survives prompt injection.
+- Added advisor metadata to OpenClaw plugin config and runtime manifest injection.
+
+### ReasoningCortex Training
+- Added frontend artifact QA playbook for landing pages, responsive UI, browser/screenshot verification, visual quality, and honest reporting.
+- Added anti-AI-template checks: reject vague slogans, empty mockups, arbitrary decorative geometry, fake logo rows, blank reveal-on-scroll screenshots, and generic content that could fit any company.
+- Added code/tool execution QA playbook: inspect files before editing, tie claims to command output/diff/runtime evidence, run targeted tests, and report blocked or failed tools plainly.
+- Added Vietnamese and non-accented prompt matching for Aira workflows such as `tao landing`, `kiem tra`, `song dong`, `nhin AI`, `chay tool`, and `sua bug`.
+- Kept market/source filtering playbooks separate from local UI/code verification so `kiem tra` does not incorrectly trigger live-data sourcing.
+
+### Verification
+- Added focused ReasoningCortex tests for Qwen3-4B advisor-only behavior, frontend realism, Vietnamese prompts, code-tool evidence rules, and live-source routing.
+- Verified runtime prompt output from `dist`:
+  - Landing prompts activate `frontend-artifact-quality` with Qwen3-4B `verifier-only`.
+  - Code/tool prompts activate `code-tool-execution-quality` with real evidence rules.
+  - PRL/source prompts activate live-data/source-triangulation playbooks.
+- Verified build and full test suite locally: `npm run build` passed; `npm test` passed with 16 files and 229 tests.
+
+### Landing Page Runtime Test Artifacts
+- Generated and reviewed OpenClaw landing test artifacts under `.codex-openclaw-landing-real-test/`.
+- Rendered desktop and mobile screenshots with Playwright and checked console errors, page errors, failed requests, horizontal overflow, hidden cards, and tall empty sections.
+- Fixed the studio artifact so content is visible by default, no-scroll screenshots are complete, and the page has a lived-in workbench preview instead of hidden reveal-only sections.
+
 ## [0.5.0] - 2026-06-09
 
 ### 🧠 Intelligence Upgrade: Memory Quality + Emotional Stability + Learning Loop

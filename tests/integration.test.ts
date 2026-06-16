@@ -13,7 +13,8 @@ import { PrefrontalCortex } from '../src/core/prefrontal.js';
 import { BrainFileManager } from '../src/storage/md-writer.js';
 import { defaultConfig } from '../src/core/config.js';
 import { join } from 'node:path';
-import { rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
 const TEST_BRAIN_DIR = join(import.meta.dirname || '.', '../.test-brain-phase4');
 
@@ -126,12 +127,16 @@ describe('ContextInjector', () => {
       activeHabits: [],
       workingMemory: [{ content: 'User asked to fix API', relevance: 1, addedAt: new Date().toISOString(), source: 'current' }],
       rewardTrend: 0.4,
+      feeling: { label: 'affection', intensity: 0.72, valence: 0.6, arousal: 0.4 },
+      factsContext: 'Relevant facts: mật danh Aira codename OpenClaw-Runtime-Star-20260615-C',
     });
 
     expect(result).toContain('Brain State');
     expect(result).toContain('Mood: content');
+    expect(result).toContain('Feeling: affection');
     expect(result).toContain('Relationship: depth 45/100, trust 72/100');
     expect(result).toContain('code-writing (85)');
+    expect(result).toContain('Relevant facts');
     expect(result).toContain('positive');
   });
 
@@ -171,6 +176,67 @@ describe('ContextInjector', () => {
 
     // ~100 tokens ≈ 400 chars
     expect(result.length).toBeLessThan(500);
+  });
+
+  it('should preserve Brain Whisper before lower-priority memory overflow', () => {
+    const result = injector.inject({
+      classification: { intent: 'action_request', urgency: 'medium', topic: 'coding', emotionalTone: 'neutral', requiresAction: true },
+      emotionalState: { mood: 'focused', intensity: 0.4, valence: 0.1, arousal: 0.4 },
+      personality: { warmth: 65, assertiveness: 55, curiosity: 70, humor: 50, patience: 50, directness: 75, protectiveness: 60, independence: 60 },
+      relationship: null,
+      relevantMemories: Array.from({ length: 12 }, (_, i) => ({
+        id: `m${i}`,
+        type: 'semantic' as const,
+        content: `AgentBrain memory item ${i} says OpenClaw should use Krouter API context injection with verification notes.`,
+        timestamp: new Date().toISOString(),
+        confidence: 0.8,
+        accessCount: 1,
+        lastAccessed: new Date().toISOString(),
+        tags: ['coding'],
+      })),
+      topSkills: [
+        { id: 's1', name: 'code-writing', category: 'code', proficiency: 85, timesUsed: 50, lastUsed: new Date().toISOString(), successRate: 0.9, successes: 45, failures: 5 },
+      ],
+      activeHabits: [],
+      workingMemory: [{ content: 'User asked to verify AgentBrain OpenClaw context injection', relevance: 1, addedAt: new Date().toISOString(), source: 'current' }],
+      rewardTrend: 0,
+      reasoningWhisper: '\n### Brain Whisper (Private support for Aira/OpenClaw)\nTask detected: troubleshooting\nReasoning frame: pin symptom | verify context\nSuggestion: verify memory recall, preserve context, test OpenClaw hook',
+    }, { maxTokens: 220 });
+
+    expect(result).toContain('Brain Whisper');
+    expect(result).toContain('Suggestion: verify memory recall');
+    expect(result.length).toBeLessThan(950);
+  });
+
+  it('should label memories as routing hints for live market data', () => {
+    const result = injector.inject({
+      classification: { intent: 'question', urgency: 'medium', topic: 'crypto', emotionalTone: 'neutral', requiresAction: false },
+      emotionalState: { mood: 'focused', intensity: 0.4, valence: 0.1, arousal: 0.4 },
+      personality: { warmth: 65, assertiveness: 55, curiosity: 70, humor: 50, patience: 50, directness: 75, protectiveness: 60, independence: 60 },
+      relationship: null,
+      relevantMemories: [
+        {
+          id: 'market-memory-1',
+          type: 'semantic',
+          content: 'User often asks about Pearl PRL and SafeTrade market routing.',
+          timestamp: new Date().toISOString(),
+          confidence: 0.8,
+          accessCount: 2,
+          lastAccessed: new Date().toISOString(),
+          tags: ['market'],
+        },
+      ],
+      topSkills: [],
+      activeHabits: [],
+      workingMemory: [],
+      rewardTrend: 0,
+      reasoningWhisper: '\n### Brain Whisper (Private support for Aira/OpenClaw)\nTask detected: market-data\nEvidence rules: Memory can suggest user intent, but only live sources can justify price, venue, liquidity, or volume',
+    }, { maxTokens: 260 });
+
+    expect(result).toContain('Task detected: market-data');
+    expect(result).toContain('Memory policy: memories are routing hints only');
+    expect(result).toContain('live price, venue, liquidity, and volume require current source evidence');
+    expect(result.indexOf('Memory policy:')).toBeLessThan(result.indexOf('Relevant memories:'));
   });
 });
 
@@ -314,6 +380,138 @@ describe('OpenClaw Plugin Integration', () => {
     // Status should show interaction
     const status = plugin.getStatus();
     expect(status.stats.interactions).toBe(1);
+
+    await plugin.shutdown();
+  });
+
+  it('should remember prior context and inject recall plus Brain Whisper for Aira', async () => {
+    const { createOpenClawPlugin } = await import('../src/integration/openclaw-plugin.js');
+    const brainDir = await mkdtemp(join(tmpdir(), 'agentbrain-openclaw-e2e-'));
+    const plugin = createOpenClawPlugin({
+      brainDir,
+      reasoningWhisper: { enabled: true, maxTokens: 420 },
+    });
+
+    try {
+      await plugin.initialize();
+
+      const learnedContext = {
+        sessionId: 'memory-session',
+        message: 'We deployed AgentBrain with Krouter API for OpenClaw context injection and API failover.',
+        senderId: 'user-001',
+        senderName: 'TestUser',
+        timestamp: new Date().toISOString(),
+        channel: 'telegram',
+      };
+
+      await plugin.onPostResponse(
+        learnedContext,
+        'Recorded: AgentBrain uses Krouter API for OpenClaw context injection and API failover.'
+      );
+
+      expect(plugin.getStatus().stats.memories).toBeGreaterThan(0);
+
+      const injected = await plugin.onPreResponse({
+        sessionId: 'memory-session',
+        message: 'What API does AgentBrain use for OpenClaw context injection?',
+        senderId: 'user-001',
+        senderName: 'TestUser',
+        timestamp: new Date().toISOString(),
+        channel: 'telegram',
+      });
+
+      expect(injected).toContain('Brain State');
+      expect(injected).toContain('Brain Whisper');
+      expect(injected).toContain('Private support for Aira/OpenClaw');
+      expect(injected).toContain('Role: Use as private support only');
+      expect(injected).toContain('Reasoning frame:');
+      expect(injected).toContain('Verification checks:');
+      expect(injected).toContain('Suggestion:');
+      expect(injected).toContain('Relevant memories');
+      expect(injected).toContain('Krouter API');
+    } finally {
+      await plugin.shutdown();
+      await rm(brainDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should persist memories across plugin restart before injecting context', async () => {
+    const { createOpenClawPlugin } = await import('../src/integration/openclaw-plugin.js');
+    const brainDir = await mkdtemp(join(tmpdir(), 'agentbrain-openclaw-restart-'));
+    let firstPlugin: ReturnType<typeof createOpenClawPlugin> | null = null;
+    let secondPlugin: ReturnType<typeof createOpenClawPlugin> | null = null;
+
+    try {
+      firstPlugin = createOpenClawPlugin({
+        brainDir,
+        reasoningWhisper: { enabled: true, maxTokens: 420 },
+      });
+      await firstPlugin.initialize();
+
+      await firstPlugin.onPostResponse(
+        {
+          sessionId: 'restart-memory-session',
+          message: 'AgentBrain OpenClaw code QA must always remember restart-rule-ABR42: landing pages need desktop and mobile render checks after restart, not file-only checks.',
+          senderId: 'user-001',
+          senderName: 'TestUser',
+          timestamp: new Date().toISOString(),
+          channel: 'telegram',
+        },
+        'Recorded restart-rule-ABR42 for OpenClaw landing page QA.'
+      );
+
+      expect(firstPlugin.getStatus().stats.memories).toBeGreaterThan(0);
+      await firstPlugin.shutdown();
+      firstPlugin = null;
+
+      secondPlugin = createOpenClawPlugin({
+        brainDir,
+        reasoningWhisper: { enabled: true, maxTokens: 420 },
+      });
+      await secondPlugin.initialize();
+
+      expect(secondPlugin.getStatus().stats.memories).toBeGreaterThan(0);
+
+      const injected = await secondPlugin.onPreResponse({
+        sessionId: 'restart-memory-session',
+        message: 'AgentBrain OpenClaw code QA restart-rule-ABR42 for landing page creation?',
+        senderId: 'user-001',
+        senderName: 'TestUser',
+        timestamp: new Date().toISOString(),
+        channel: 'telegram',
+      });
+
+      expect(injected).toContain('Brain State');
+      expect(injected).toContain('Brain Whisper');
+      expect(injected).toContain('Relevant memories');
+      expect(injected).toContain('restart-rule-ABR42');
+      expect(injected).toContain('desktop and mobile');
+    } finally {
+      await firstPlugin?.shutdown();
+      await secondPlugin?.shutdown();
+      await rm(brainDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should not inject Brain Whisper when reasoning whisper is disabled', async () => {
+    const { createOpenClawPlugin } = await import('../src/integration/openclaw-plugin.js');
+    const plugin = createOpenClawPlugin({
+      brainDir: join(TEST_BRAIN_DIR, 'integration-disabled-whisper'),
+      reasoningWhisper: { enabled: false, maxTokens: 120 },
+    });
+
+    await plugin.initialize();
+
+    const brainContext = await plugin.onPreResponse({
+      sessionId: 'test-session-disabled-whisper',
+      message: 'Fix the API endpoint bug',
+      senderId: 'user-001',
+      senderName: 'TestUser',
+      timestamp: new Date().toISOString(),
+      channel: 'telegram',
+    });
+
+    expect(brainContext).not.toContain('Brain Whisper');
 
     await plugin.shutdown();
   });

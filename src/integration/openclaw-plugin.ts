@@ -29,6 +29,8 @@ import { KnowledgeExtractor } from '../core/knowledge-extractor.js';
 import { LessonLearner } from '../core/lesson-learner.js';
 import { PersonalityInfluence } from '../core/personality-influence.js';
 import { ProactiveEngine } from '../core/proactive-engine.js';
+import { ReasoningCortex } from '../core/reasoning-cortex.js';
+import { formatWhisper, getInjectionBudget, inferFeedbackOutcome } from './brain-whisper-format.js';
 
 export interface OpenClawPluginManifest {
   name: string;
@@ -114,11 +116,13 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
   const lessonLearner = new LessonLearner();
   let personalityInfluence: PersonalityInfluence;
   const proactiveEngine = new ProactiveEngine();
+  let reasoningCortex: ReasoningCortex | null = null;
 
   let initialized = false;
   let interactionCount = 0;
   let startTime = Date.now();
   let lastAgentResponse = '';
+  const pendingWhispers = new Map<string, string>();
 
   const manifest: OpenClawPluginManifest = {
     name: 'agentbrain',
@@ -132,6 +136,8 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
       enableReflection: config.enableReflection,
       enableEmotions: config.enableEmotions,
       enableSkillTracking: config.enableSkillTracking,
+      reasoningWhisper: config.reasoningWhisper,
+      advisorModel: config.advisorModel,
     },
   };
 
@@ -140,6 +146,7 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
 
     async initialize(overrideConfig?: Partial<BrainConfig>): Promise<void> {
       const finalConfig = { ...config, ...overrideConfig };
+      pendingWhispers.clear();
 
       // Initialize file structure
       await storage.ensureBrainStructure();
@@ -176,6 +183,14 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
         curiosity: personality.curiosity ?? 60,
         assertiveness: personality.assertiveness ?? 70,
       });
+
+      reasoningCortex = finalConfig.reasoningWhisper?.enabled === false
+        ? null
+        : new ReasoningCortex(
+            finalConfig,
+            brain.hippocampus,
+            brain.temporal
+          );
 
       // Load persisted lessons and patterns
       const lessonsData = await storage.readFile('learning/lessons.md');
@@ -296,13 +311,49 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
         ? `Proactive: ${suggestions.map(s => s.message).join(' | ')}`
         : '';
 
-      // Step 12: Record action for pattern learning
+      // Step 12: Generate Brain Whisper
+      let reasoningWhisper = '';
+      try {
+        const previousWhisperId = pendingWhispers.get(context.sessionId);
+        if (previousWhisperId && reasoningCortex) {
+          const feedbackOutcome = inferFeedbackOutcome(
+            context.message,
+            amygdala.detectSentiment(context.message)
+          );
+          if (feedbackOutcome) {
+            reasoningCortex.recordOutcome(
+              previousWhisperId,
+              feedbackOutcome.success,
+              feedbackOutcome.userSatisfaction
+            );
+          }
+          pendingWhispers.delete(context.sessionId);
+        }
+
+        if (reasoningCortex) {
+          const whisper = await reasoningCortex.generateWhisper({
+            userMessage: context.message,
+            conversationHistory: undefined,
+            timeoutSeconds: (context as any).timeoutSeconds,
+            contextTokens: (context as any).contextTokens,
+            elapsedSeconds: (context as any).elapsedSeconds,
+          });
+          if (whisper.tokenBudget > 0) {
+            reasoningWhisper = formatWhisper(whisper);
+            pendingWhispers.set(context.sessionId, whisper.whisperId);
+          }
+        }
+      } catch (error) {
+        console.error('[AgentBrain] ReasoningCortex error:', error);
+      }
+
+      // Step 13: Record action for pattern learning
       proactiveEngine.recordAction(
         classification.topic || 'general',
         context.timestamp
       );
 
-      // Step 13: Build injection context
+      // Step 14: Build injection context
       const injectionContext: InjectionContext = {
         classification,
         emotionalState: emotionalResult.updatedState,
@@ -317,10 +368,13 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
         lessonsContext,
         styleDirectives,
         suggestionsContext,
+        reasoningWhisper,
       };
 
-      // Step 14: Generate injectable context (with priority enforcement)
-      const brainContext = injector.inject(injectionContext);
+      // Step 15: Generate injectable context (with priority enforcement)
+      const brainContext = injector.inject(injectionContext, {
+        maxTokens: getInjectionBudget(reasoningWhisper),
+      });
 
       interactionCount++;
       return brainContext;
@@ -456,6 +510,11 @@ export function createOpenClawPlugin(userConfig?: Partial<BrainConfig>): OpenCla
 
       // Shutdown hippocampus (closes vector DB)
       await brain.hippocampus.shutdown();
+
+      if (typeof storage.close === 'function') {
+        storage.close();
+      }
+      pendingWhispers.clear();
 
       initialized = false;
       console.log('[AgentBrain:OpenClaw] Shutdown complete — brain state persisted');

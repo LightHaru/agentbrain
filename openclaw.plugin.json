@@ -6,6 +6,9 @@
   "activation": {
     "onStartup": true
   },
+  "skills": [
+    "skills"
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -67,6 +70,66 @@
         "minimum": 120,
         "maximum": 800
       },
+      "reasoningWhisper": {
+        "type": "object",
+        "description": "Private advisory thinking scaffold for Aira/OpenClaw. AgentBrain stays a support brain, not the final responder.",
+        "default": {
+          "enabled": true,
+          "maxTokens": 700
+        },
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "maxTokens": {
+            "type": "integer",
+            "description": "Maximum tokens reserved for Brain Whisper",
+            "default": 700,
+            "minimum": 0,
+            "maximum": 900
+          }
+        }
+      },
+      "advisorModel": {
+        "type": "object",
+        "description": "Optional lightweight verifier model hint. It critiques/checks only; Aira/OpenClaw remains the final actor.",
+        "default": {
+          "enabled": true,
+          "provider": "qwen",
+          "model": "Qwen3-4B",
+          "role": "verifier-only",
+          "maxTokens": 256
+        },
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "provider": {
+            "type": "string",
+            "default": "qwen"
+          },
+          "model": {
+            "type": "string",
+            "default": "Qwen3-4B"
+          },
+          "role": {
+            "type": "string",
+            "const": "verifier-only",
+            "default": "verifier-only"
+          },
+          "maxTokens": {
+            "type": "integer",
+            "description": "Maximum private critique/check budget for advisor model output",
+            "default": 256,
+            "minimum": 0,
+            "maximum": 512
+          }
+        }
+      },
       "graphRecallDepth": {
         "type": "integer",
         "description": "Relationship hops to include from AgentBrain graph memory during prompt injection",
@@ -107,7 +170,7 @@
       "agentbrain_snapshot"
     ]
   },
-  "version": "0.8.1",
+  "version": "0.9.0",
   "author": "KLSGG",
   "repository": "https://github.com/KLSGG/agentbrain",
   "license": "MIT",

@@ -32,20 +32,21 @@ export declare class Hippocampus {
     private memories;
     private heartbeatCount;
     private vectorMemory;
+    private queryAnalyzer;
     constructor(config: BrainConfig, fileManager: BrainFileManager | SqlStorageAdapter);
     /**
      * Initialize: load existing memories from brain files
      */
     initialize(): Promise<void>;
     /**
-     * Recall relevant memories using vector similarity + keyword hybrid
-     * Phase 3 enhancement: filter by task-type tags to reduce noise
+     * Recall relevant memories using context-aware retrieval
+     * Phase 4 enhancement: query understanding + smart filtering + dynamic limit
      */
     recall(query: string, topic: string): Promise<Memory[]>;
     /**
-     * Detect task type from query/topic for targeted recall
+     * Filter candidate memories based on query context
      */
-    private detectTaskType;
+    private filterCandidates;
     /**
      * Fallback keyword-based recall
      */
@@ -71,6 +72,10 @@ export declare class Hippocampus {
      */
     private detectStrongSentiment;
     /**
+     * Skip chat noise unless it contains durable data.
+     */
+    private isLowValueMessage;
+    /**
      * Extract topic tags from text
      */
     private extractTags;
@@ -92,6 +97,10 @@ export declare class Hippocampus {
         procedural: number;
         vectorIndexed: number;
     };
+    /**
+     * Flush buffered memories without closing the vector store.
+     */
+    flush(): Promise<void>;
     /**
      * Shutdown: close vector DB
      */

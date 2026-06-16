@@ -185,6 +185,18 @@ class KnowledgeExtractor {
             result.entities.push(this.makeEntity(m[1], 'tool', timestamp));
         }
     }
+    cleanSubject(value) {
+        return value
+            .replace(/^(?:hãy\s+)?(?:ghi\s+nhớ|remember|note)\s*[:,-]?\s*/iu, '')
+            .replace(/^(?:rằng|that)\s+/iu, '')
+            .trim();
+    }
+    cleanObject(value) {
+        return value
+            .replace(/\s+(?:và|and)\s+.*$/iu, '')
+            .replace(/[.!?。]+$/u, '')
+            .trim();
+    }
     makeEntity(name, type, timestamp) {
         const existing = this.entities.get(name.toLowerCase());
         if (existing) {
@@ -285,20 +297,38 @@ class KnowledgeExtractor {
     }
     buildPatterns() {
         return [
+            // "mật danh của Aira là X" / "codename for Aira is X"
+            {
+                regex: /(?:mật\s+danh|codename|code\s+name)\s+(?:runtime\s+)?(?:của|for)?\s*([\p{L}\p{N}_ .'-]{1,40}?)\s+(?:là|is|=|:)\s+(.{3,100}?)(?=\s+(?:và|and)\b|[.!?。]|$)/iu,
+                extract: (m) => ({
+                    subject: this.cleanSubject(`mật danh ${m[1]}`),
+                    relation: 'codename',
+                    object: this.cleanObject(m[2]),
+                    confidence: 0.95,
+                }),
+            },
             // "X is Y" / "X là Y"
             {
-                regex: /(?:^|\s)(\w[\w\s]{1,30}?)\s+(?:is|là)\s+(.{3,60})(?:\.|$)/i,
-                extract: (m) => ({ subject: m[1].trim(), relation: 'is', object: m[2].trim() }),
+                regex: /(?:^|[\s:])([\p{L}\p{N}_][\p{L}\p{N}_\s.'()/-]{1,60}?)\s+(?:is|là)\s+(.{3,100}?)(?=\s+(?:và|and)\b|[.!?。]|$)/iu,
+                extract: (m) => ({
+                    subject: this.cleanSubject(m[1]),
+                    relation: 'is',
+                    object: this.cleanObject(m[2]),
+                }),
             },
             // "X uses Y" / "X dùng Y"
             {
-                regex: /(?:^|\s)(\w[\w\s]{1,20}?)\s+(?:uses?|dùng|xài)\s+(.{3,40})/i,
-                extract: (m) => ({ subject: m[1].trim(), relation: 'uses', object: m[2].trim() }),
+                regex: /(?:^|\s)([\p{L}\p{N}_][\p{L}\p{N}_\s.'()/-]{1,40}?)\s+(?:uses?|dùng|xài)\s+(.{3,60}?)(?=\s+(?:và|and)\b|[.!?。]|$)/iu,
+                extract: (m) => ({
+                    subject: this.cleanSubject(m[1]),
+                    relation: 'uses',
+                    object: this.cleanObject(m[2]),
+                }),
             },
             // "X prefers Y" / "X thích Y"
             {
-                regex: /(?:^|\s)(?:anh|em|sếp|i)\s+(?:thích|prefer|like|muốn|want)\s+(.{3,60})/i,
-                extract: (m, ctx) => ({ subject: ctx.senderName, relation: 'prefers', object: m[1].trim() }),
+                regex: /(?:^|\s)(?:anh|em|sếp|i)\s+(?:thích|prefer|like|muốn|want)\s+(.{3,80}?)(?=\s+(?:và|and)\b|[.!?。]|$)/iu,
+                extract: (m, ctx) => ({ subject: ctx.senderName, relation: 'prefers', object: this.cleanObject(m[1]) }),
             },
             // "X costs Y" / "giá X là Y"
             {

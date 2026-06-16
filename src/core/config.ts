@@ -29,6 +29,26 @@ export interface BrainConfig {
 
   /** SQLite database path for structured data */
   dbPath: string;
+
+  /** Enable debug logging for memory recall */
+  debug?: boolean;
+
+  /** Reasoning Whisper configuration (Phase 6) */
+  reasoningWhisper?: {
+    /** Enable reasoning whisper hints */
+    enabled: boolean;
+    /** Max tokens for whisper injection */
+    maxTokens: number;
+  };
+
+  /** Optional lightweight advisor model. It critiques/checks only; Aira stays primary. */
+  advisorModel?: {
+    enabled: boolean;
+    provider: string;
+    model: string;
+    role: 'verifier-only';
+    maxTokens: number;
+  };
 }
 
 export const defaultConfig: BrainConfig = {
@@ -41,4 +61,15 @@ export const defaultConfig: BrainConfig = {
   enableSkillTracking: true,
   maintenanceInterval: 6, // every 6 heartbeats
   dbPath: './brain/agentbrain.db',
+  reasoningWhisper: {
+    enabled: true,
+    maxTokens: 700,
+  },
+  advisorModel: {
+    enabled: true,
+    provider: 'qwen',
+    model: 'Qwen3-4B',
+    role: 'verifier-only',
+    maxTokens: 256,
+  },
 };

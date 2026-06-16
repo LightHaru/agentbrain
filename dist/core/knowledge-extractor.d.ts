@@ -99,6 +99,8 @@ export declare class KnowledgeExtractor {
     loadProceduralMemories(memories: ProceduralMemory[]): void;
     private extractFromText;
     private extractEntities;
+    private cleanSubject;
+    private cleanObject;
     private makeEntity;
     private detectCorrections;
     private summarize;

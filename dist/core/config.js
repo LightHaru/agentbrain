@@ -14,5 +14,16 @@ exports.defaultConfig = {
     enableSkillTracking: true,
     maintenanceInterval: 6, // every 6 heartbeats
     dbPath: './brain/agentbrain.db',
+    reasoningWhisper: {
+        enabled: true,
+        maxTokens: 700,
+    },
+    advisorModel: {
+        enabled: true,
+        provider: 'qwen',
+        model: 'Qwen3-4B',
+        role: 'verifier-only',
+        maxTokens: 256,
+    },
 };
 //# sourceMappingURL=config.js.map

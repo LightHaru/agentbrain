@@ -240,6 +240,7 @@ export declare class BrainDatabase {
     setMeta(key: string, value: string): void;
     getMeta(key: string): string | undefined;
     hashContent(content: string): string;
+    private toFts5Query;
     close(): void;
     getDbPath(): string;
     /**

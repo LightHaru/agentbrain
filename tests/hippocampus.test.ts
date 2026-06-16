@@ -2,9 +2,10 @@
  * Tests for Hippocampus module — Memory formation & retrieval
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Hippocampus } from '../src/core/hippocampus.js';
 import { BrainFileManager } from '../src/storage/md-writer.js';
+import { BrainDatabase } from '../src/storage/brain-db.js';
 import { defaultConfig } from '../src/core/config.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -76,6 +77,32 @@ describe('Hippocampus', () => {
       const stats = hippocampus.getStats();
       expect(stats.total).toBe(0);
     });
+
+    it('ignores pure playful teasing', async () => {
+      await hippocampus.consolidate({
+        message: 'gà mập',
+        response: 'hihi',
+        senderId: 'user1',
+        senderName: 'Sếp',
+        timestamp: new Date().toISOString(),
+      });
+
+      const stats = hippocampus.getStats();
+      expect(stats.total).toBe(0);
+    });
+
+    it('keeps concrete findings from low-value prompts', async () => {
+      await hippocampus.consolidate({
+        message: 'ok',
+        response: 'Current price is $0.12 and hashrate is 10 TH/s',
+        senderId: 'user1',
+        senderName: 'Sếp',
+        timestamp: new Date().toISOString(),
+      });
+
+      const stats = hippocampus.getStats();
+      expect(stats.semantic).toBeGreaterThan(0);
+    });
   });
 
   describe('recall', () => {
@@ -108,6 +135,30 @@ describe('Hippocampus', () => {
       // The memory may still appear but with low base confidence
       const highRelevance = results.filter(r => r.tags.includes('food'));
       expect(highRelevance.length).toBe(0);
+    });
+
+    it('handles punctuation-heavy BM25 queries without fallback warnings', () => {
+      const db = new BrainDatabase(join(tempDir, 'fts-brain.db'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      try {
+        db.insertMemory({
+          id: 'm-fts-prl',
+          type: 'semantic',
+          content: 'PRL Pearl SafeTrade WPRL live API routing and market source checks.',
+          timestamp: new Date().toISOString(),
+          confidence: 0.9,
+          tags: ['crypto', 'market'],
+        });
+
+        const results = db.bm25Search('PRL/Pearl, SafeTrade? q=WPRL', 5);
+
+        expect(results.some(result => result.id === 'm-fts-prl')).toBe(true);
+        expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('FTS5 query failed'), expect.anything());
+      } finally {
+        warn.mockRestore();
+        db.close();
+      }
     });
   });
 

@@ -7,7 +7,7 @@
 
 import { writeFile, readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Memory } from '../index.js';
 
 const BRAIN_DIRS = [
@@ -102,8 +102,8 @@ export class BrainFileManager {
    */
   async writeFile(subPath: string, content: string): Promise<void> {
     const filePath = join(this.brainDir, subPath);
-    const dir = filePath.substring(0, filePath.lastIndexOf('/'));
-    if (!existsSync(dir)) {
+    const dir = dirname(filePath);
+    if (dir && dir !== '.' && !existsSync(dir)) {
       await mkdir(dir, { recursive: true });
     }
     await writeFile(filePath, content, 'utf-8');
