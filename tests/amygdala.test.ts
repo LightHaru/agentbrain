@@ -122,6 +122,21 @@ describe('Amygdala', () => {
       expect(rel!.trustLevel).toBeGreaterThan(10); // started at 10
     });
 
+    it('treats trusted playful teasing as warm banter', () => {
+      for (let i = 0; i < 30; i++) {
+        amygdala.process(makeContext('Cảm ơn em, hay quá!', 'user1', 'Sếp'));
+      }
+
+      const before = amygdala.getRelationship('user1')!;
+      expect(before.trustLevel).toBeGreaterThanOrEqual(50);
+
+      const result = amygdala.process(makeContext('gà mập hihi', 'user1', 'Sếp'));
+      const after = amygdala.getRelationship('user1')!;
+
+      expect(result.userSentiment).toBeGreaterThanOrEqual(0.15);
+      expect(after.negativeInteractions).toBe(before.negativeInteractions);
+    });
+
     it('decreases trust on negative interactions', () => {
       amygdala.process(makeContext('Tệ quá, sai hết', 'user1', 'Sếp'));
       amygdala.process(makeContext('Ghét cái này, lỗi hoài', 'user1', 'Sếp'));

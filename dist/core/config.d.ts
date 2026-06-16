@@ -20,6 +20,23 @@ export interface BrainConfig {
     maintenanceInterval: number;
     /** SQLite database path for structured data */
     dbPath: string;
+    /** Enable debug logging for memory recall */
+    debug?: boolean;
+    /** Reasoning Whisper configuration (Phase 6) */
+    reasoningWhisper?: {
+        /** Enable reasoning whisper hints */
+        enabled: boolean;
+        /** Max tokens for whisper injection */
+        maxTokens: number;
+    };
+    /** Optional lightweight advisor model. It critiques/checks only; Aira stays primary. */
+    advisorModel?: {
+        enabled: boolean;
+        provider: string;
+        model: string;
+        role: 'verifier-only';
+        maxTokens: number;
+    };
 }
 export declare const defaultConfig: BrainConfig;
 //# sourceMappingURL=config.d.ts.map

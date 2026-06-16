@@ -82,8 +82,8 @@ class BrainSync {
     async restore(snapshot) {
         for (const [relativePath, content] of Object.entries(snapshot.files)) {
             const fullPath = (0, node_path_1.join)(this.brainDir, relativePath);
-            const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
-            if (!(0, node_fs_1.existsSync)(dir)) {
+            const dir = (0, node_path_1.dirname)(fullPath);
+            if (dir && dir !== '.' && !(0, node_fs_1.existsSync)(dir)) {
                 await (0, promises_1.mkdir)(dir, { recursive: true });
             }
             await (0, promises_1.writeFile)(fullPath, content, 'utf-8');

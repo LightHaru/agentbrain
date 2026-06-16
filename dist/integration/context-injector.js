@@ -45,6 +45,10 @@ class ContextInjector {
         if (opts.includeEmotions) {
             const { mood, valence, arousal } = context.emotionalState;
             lines.push(`Mood: ${mood} | Valence: ${valence.toFixed(2)} | Arousal: ${arousal.toFixed(2)}`);
+            if (context.feeling && context.feeling.intensity >= 0.25) {
+                const f = context.feeling;
+                lines.push(`Feeling: ${f.label} (intensity ${f.intensity.toFixed(2)})`);
+            }
         }
         // Relationship (if exists)
         if (context.relationship) {
@@ -57,6 +61,10 @@ class ContextInjector {
             if (notable.length > 0) {
                 lines.push(`Personality: ${notable.join(', ')}`);
             }
+        }
+        // Phase 6: Reasoning Whisper is high-priority private support for Aira.
+        if (context.reasoningWhisper) {
+            lines.push(context.reasoningWhisper);
         }
         // Top skills
         if (opts.includeSkills && context.topSkills.length > 0) {
@@ -79,10 +87,18 @@ class ContextInjector {
                 .join('; ');
             lines.push(`Working memory: ${wmStr}`);
         }
-        // Relevant memories (compact)
+        // Structured facts are kept compact and placed before long memories so exact
+        // user-stated values survive token-budget trimming.
+        if (context.factsContext) {
+            lines.push(context.factsContext);
+        }
+        // Relevant memories (compact) - limit is applied by Hippocampus based on query intent
         if (opts.includeMemories && context.relevantMemories.length > 0) {
+            if (this.isLiveMarketReasoning(context.reasoningWhisper)) {
+                lines.push('Memory policy: memories are routing hints only; live price, venue, liquidity, and volume require current source evidence.');
+            }
             lines.push('Relevant memories:');
-            for (const mem of context.relevantMemories.slice(0, 5)) {
+            for (const mem of context.relevantMemories) {
                 const shortContent = mem.content.slice(0, 80);
                 lines.push(`  [${mem.type}] ${shortContent} (conf: ${mem.confidence.toFixed(2)})`);
             }
@@ -131,6 +147,9 @@ class ContextInjector {
             }
         }
         return notable.slice(0, 4); // max 4 notable traits
+    }
+    isLiveMarketReasoning(reasoningWhisper) {
+        return Boolean(reasoningWhisper?.includes('Task detected: market-data'));
     }
     /**
      * Trim content to fit within token budget

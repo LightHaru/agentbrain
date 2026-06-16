@@ -61,6 +61,10 @@ export declare class Amygdala {
         updatedState: EmotionalState;
     };
     /**
+     * Detect trusted playful teasing without real criticism.
+     */
+    private detectPlayfulTease;
+    /**
      * Detect user sentiment from message (-1 to 1)
      */
     detectSentiment(message: string): number;

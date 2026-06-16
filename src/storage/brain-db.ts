@@ -357,6 +357,11 @@ export class BrainDatabase {
    * Returns memories ranked by BM25 relevance score
    */
   bm25Search(query: string, limit: number = 10): Array<MemoryRow & { bm25_score: number }> {
+    const ftsQuery = this.toFts5Query(query);
+    if (!ftsQuery) {
+      return [];
+    }
+
     try {
       const results = this.db.prepare(`
         SELECT m.*, bm25(memories_fts) as bm25_score
@@ -365,7 +370,7 @@ export class BrainDatabase {
         WHERE memories_fts MATCH ?
         ORDER BY bm25_score
         LIMIT ?
-      `).all(query, limit) as Array<MemoryRow & { bm25_score: number }>;
+      `).all(ftsQuery, limit) as Array<MemoryRow & { bm25_score: number }>;
       return results;
     } catch (e: any) {
       // Fallback to LIKE search if FTS5 query fails
@@ -676,6 +681,25 @@ export class BrainDatabase {
     return createHash('sha256').update(content.trim().toLowerCase()).digest('hex').slice(0, 32);
   }
 
+  private toFts5Query(query: string): string {
+    const tokens = query
+      .normalize('NFKC')
+      .match(/[\p{L}\p{N}_]+/gu);
+
+    if (!tokens) {
+      return '';
+    }
+
+    const uniqueTokens = Array.from(new Set(
+      tokens
+        .map(token => token.replace(/"/g, '').trim())
+        .filter(token => token.length >= 2)
+        .slice(0, 16)
+    ));
+
+    return uniqueTokens.map(token => `"${token}"`).join(' OR ');
+  }
+
   close(): void {
     this.db.close();
   }
@@ -688,7 +712,8 @@ export class BrainDatabase {
    * Run raw SQL (for advanced queries)
    */
   raw(sql: string, params: any[] = []): any {
-    return this.db.prepare(sql).all(...params);
+    const statement = this.db.prepare(sql);
+    return statement.reader ? statement.all(...params) : statement.run(...params);
   }
 
   /**

@@ -91,8 +91,8 @@ class BrainFileManager {
      */
     async writeFile(subPath, content) {
         const filePath = (0, node_path_1.join)(this.brainDir, subPath);
-        const dir = filePath.substring(0, filePath.lastIndexOf('/'));
-        if (!(0, node_fs_1.existsSync)(dir)) {
+        const dir = (0, node_path_1.dirname)(filePath);
+        if (dir && dir !== '.' && !(0, node_fs_1.existsSync)(dir)) {
             await (0, promises_1.mkdir)(dir, { recursive: true });
         }
         await (0, promises_1.writeFile)(filePath, content, 'utf-8');

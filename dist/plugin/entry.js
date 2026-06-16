@@ -46,6 +46,8 @@ const personality_influence_js_1 = require("../core/personality-influence.js");
 const proactive_engine_js_1 = require("../core/proactive-engine.js");
 const feedback_analyzer_js_1 = require("../core/feedback-analyzer.js");
 const personality_adjuster_js_1 = require("../core/personality-adjuster.js");
+const reasoning_cortex_js_1 = require("../core/reasoning-cortex.js");
+const brain_whisper_format_js_1 = require("../integration/brain-whisper-format.js");
 // --- State ---
 let initialized = false;
 let thalamus;
@@ -78,10 +80,250 @@ let personalityInfluence;
 let proactiveEngine;
 let feedbackAnalyzer;
 let personalityAdjuster;
+let reasoningCortex = null;
 let interactionCount = 0;
 let heartbeatCount = 0;
 let lastMessageContext = null;
 let lastAgentResponse = '';
+const runtimeTurns = new Map();
+const processedRuntimeOutputs = new Set();
+const pendingWhispers = new Map();
+function runtimeTurnKey(event, ctx) {
+    return String(event?.runId || ctx?.runId || ctx?.sessionKey || ctx?.sessionId || 'latest');
+}
+function outputTextFromEvent(event) {
+    if (Array.isArray(event?.assistantTexts)) {
+        return event.assistantTexts.filter((item) => typeof item === 'string' && item.trim()).join('\n');
+    }
+    if (typeof event?.lastAssistantMessage === 'string')
+        return event.lastAssistantMessage;
+    const lastAssistantText = textFromMessage(event?.lastAssistant);
+    if (lastAssistantText)
+        return lastAssistantText;
+    const messagesText = lastAssistantTextFromMessages(event?.messages);
+    if (messagesText)
+        return messagesText;
+    if (typeof event?.text === 'string')
+        return event.text;
+    if (typeof event?.content === 'string')
+        return event.content;
+    return '';
+}
+function lastAssistantTextFromMessages(messages) {
+    if (!Array.isArray(messages))
+        return '';
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const item = messages[index]?.message || messages[index];
+        if (item?.role !== 'assistant')
+            continue;
+        const text = textFromMessage(item);
+        if (text && !/\[assistant turn failed/i.test(text))
+            return text;
+    }
+    return '';
+}
+function textFromMessage(message) {
+    if (!message)
+        return '';
+    if (typeof message === 'string')
+        return message;
+    if (typeof message.text === 'string')
+        return message.text;
+    if (typeof message.content === 'string')
+        return message.content;
+    if (Array.isArray(message.content)) {
+        return message.content
+            .map((part) => typeof part === 'string' ? part : part?.text || part?.content || '')
+            .filter((text) => text.trim())
+            .join('\n');
+    }
+    return '';
+}
+function persistExtractionResult(result) {
+    if (!result || !storage)
+        return;
+    const db = storage.getDatabase();
+    for (const correction of result.corrections || []) {
+        if (correction?.oldFact?.id && correction?.newFact?.id) {
+            db.supersedeFact(correction.oldFact.id, correction.newFact.id, correction.timestamp);
+        }
+    }
+    for (const fact of result.facts || []) {
+        db.insertFact({
+            id: fact.id,
+            subject: fact.subject,
+            relation: fact.relation,
+            object: fact.object,
+            confidence: fact.confidence,
+            source: fact.source,
+            timestamp: fact.timestamp,
+            validFrom: fact.validFrom,
+        });
+    }
+    for (const entity of result.entities || []) {
+        db.upsertEntity({
+            name: entity.name,
+            type: entity.type,
+            aliases: entity.aliases || [],
+            timestamp: entity.lastSeen || entity.firstSeen || new Date().toISOString(),
+        });
+    }
+}
+function loadPersistedKnowledge() {
+    if (!storage || !knowledgeExtractor)
+        return;
+    const db = storage.getDatabase();
+    const facts = db.getCurrentFacts().map((row) => ({
+        id: row.id,
+        subject: row.subject,
+        relation: row.relation,
+        object: row.object,
+        confidence: row.confidence,
+        source: row.source,
+        timestamp: row.timestamp,
+        supersededBy: row.superseded_by || undefined,
+        validFrom: row.valid_from || row.timestamp,
+        validUntil: row.valid_until || undefined,
+    }));
+    knowledgeExtractor.loadFacts(facts);
+    const entities = db.getEntities().map((row) => ({
+        name: row.name,
+        type: row.type,
+        aliases: safeJsonArray(row.aliases),
+        firstSeen: row.first_seen,
+        lastSeen: row.last_seen,
+    }));
+    knowledgeExtractor.loadEntities(entities);
+}
+function safeJsonArray(value) {
+    try {
+        const parsed = JSON.parse(value || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    catch {
+        return [];
+    }
+}
+function getRelevantFactsContext(message, limit = 5) {
+    if (!storage)
+        return '';
+    const db = storage.getDatabase();
+    const facts = db.getCurrentFacts();
+    if (!facts.length)
+        return '';
+    const tokens = new Set(message
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}_-]+/u)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3));
+    const scored = facts.map((fact) => {
+        const haystack = `${fact.subject} ${fact.relation} ${fact.object}`.toLowerCase();
+        let score = 0;
+        for (const token of tokens) {
+            if (haystack.includes(token))
+                score += token.length >= 5 ? 2 : 1;
+        }
+        if (/mật\s+danh|codename|code\s+name/i.test(`${fact.subject} ${fact.relation}`))
+            score += 4;
+        return { fact, score };
+    });
+    const selected = scored
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || String(b.fact.timestamp).localeCompare(String(a.fact.timestamp)))
+        .slice(0, limit)
+        .map((item) => `${item.fact.subject} ${item.fact.relation} ${item.fact.object}`);
+    if (!selected.length)
+        return '';
+    return `Relevant facts: ${selected.join(' | ')}`;
+}
+async function processRuntimeCompletion(event, ctx, config) {
+    if (config?.enabled === false)
+        return;
+    if (!await ensureInitialized(config))
+        return;
+    const key = runtimeTurnKey(event, ctx);
+    if (processedRuntimeOutputs.has(key))
+        return;
+    const responseText = outputTextFromEvent(event);
+    if (!responseText || responseText.length < 5 || /\[assistant turn failed/i.test(responseText))
+        return;
+    let msgContext = runtimeTurns.get(key) || lastMessageContext;
+    const prompt = typeof event?.prompt === 'string' ? event.prompt : '';
+    if (!msgContext && prompt) {
+        msgContext = {
+            message: prompt,
+            senderId: ctx?.senderId || 'openclaw-agent',
+            senderName: 'User',
+            timestamp: new Date().toISOString(),
+            sessionId: ctx?.sessionKey || ctx?.sessionId || '',
+        };
+    }
+    if (!msgContext)
+        return;
+    try {
+        await hippocampus.consolidate({
+            message: msgContext.message,
+            response: responseText,
+            senderId: msgContext.senderId,
+            senderName: msgContext.senderName,
+            timestamp: msgContext.timestamp,
+        });
+        await hippocampus.flush();
+        const knowledge = knowledgeExtractor.extract(msgContext.message, responseText, {
+            senderName: msgContext.senderName,
+            timestamp: msgContext.timestamp,
+            previousFacts: knowledgeExtractor.getActiveFacts(),
+        });
+        persistExtractionResult(knowledge);
+        const lesson = lessonLearner.analyze({
+            userMessage: msgContext.message,
+            agentResponse: responseText,
+            previousAgentResponse: lastAgentResponse,
+            senderName: msgContext.senderName,
+            timestamp: msgContext.timestamp,
+        });
+        if (lesson && config?.logging) {
+            console.log(`[AgentBrain] Lesson learned: ${lesson.type} - ${lesson.right.slice(0, 60)}`);
+        }
+        const sentiment = amygdala.detectSentiment(msgContext.message);
+        const isToolFailure = /timeout|rate.?limit|api.?error|quota|expired|timed out/i.test(responseText);
+        const rewardSignal = isToolFailure ? 0 : sentiment;
+        const skill = cerebellum.detectSkill(msgContext.message);
+        if (config?.enableSkillTracking !== false && skill) {
+            cerebellum.recordSkillUsage(skill, rewardSignal >= 0);
+        }
+        basalGanglia.processReward({
+            timestamp: new Date().toISOString(),
+            taskType: skill || 'general',
+            signal: rewardSignal,
+            source: 'implicit',
+            context: msgContext.message.slice(0, 50),
+        });
+        feedbackAnalyzer.recordAgentReply();
+        if (config?.enableReflection !== false) {
+            const classification = thalamus.classify(msgContext);
+            if (classification.requiresAction || Math.abs(sentiment) > 0.3) {
+                cingulate.reflect({
+                    taskDescription: msgContext.message.slice(0, 100),
+                    userMessage: msgContext.message,
+                    agentResponse: responseText,
+                    userSentiment: rewardSignal,
+                    emotionalState: amygdala.getState(),
+                });
+            }
+        }
+        prefrontal.completePlan();
+        personalityInfluence.updateTraits(cingulate.getPersonality());
+        lastAgentResponse = responseText;
+        processedRuntimeOutputs.add(key);
+        runtimeTurns.delete(key);
+    }
+    catch (err) {
+        if (config?.logging) {
+            console.warn('[AgentBrain] runtime completion processing failed:', err.message);
+        }
+    }
+}
 function resolveDir(dir) {
     if (dir.startsWith('~'))
         return (0, node_path_1.resolve)((0, node_os_1.homedir)(), dir.slice(2));
@@ -94,6 +336,7 @@ async function ensureInitialized(config) {
     if (!config) {
         config = { enabled: true, brainDir: '~/.openclaw/data/agentbrain' };
     }
+    pendingWhispers.clear();
     try {
         const brainDir = resolveDir(config?.brainDir || '~/.openclaw/data/agentbrain');
         const brainConfig = {
@@ -106,6 +349,8 @@ async function ensureInitialized(config) {
             enableEmotions: config?.enableEmotions ?? config_js_1.defaultConfig.enableEmotions,
             enableSkillTracking: config?.enableSkillTracking ?? config_js_1.defaultConfig.enableSkillTracking,
             maintenanceInterval: config?.maintenanceInterval ?? config_js_1.defaultConfig.maintenanceInterval,
+            reasoningWhisper: config?.reasoningWhisper ?? config_js_1.defaultConfig.reasoningWhisper,
+            advisorModel: config?.advisorModel ?? config_js_1.defaultConfig.advisorModel,
         };
         // SQL storage (primary)
         storage = new sql_adapter_js_1.SqlStorageAdapter(brainDir);
@@ -134,6 +379,9 @@ async function ensureInitialized(config) {
         parietal = new parietal_js_1.ParietalLobe(brainConfig);
         insula = new insula_js_1.Insula(brainConfig);
         metacognition = new metacognition_js_1.Metacognition(brainConfig);
+        reasoningCortex = brainConfig.reasoningWhisper?.enabled === false
+            ? null
+            : new reasoning_cortex_js_1.ReasoningCortex(brainConfig, hippocampus, temporal);
         // Phase 2 modules (v0.6.0) — now REAL, wired into the pipeline
         hypothalamus = new hypothalamus_js_1.Hypothalamus('Asia/Ho_Chi_Minh');
         brainstem = new brainstem_js_1.Brainstem();
@@ -141,7 +389,7 @@ async function ensureInitialized(config) {
         globalWorkspace = new global_workspace_js_1.GlobalWorkspace();
         theoryOfMind = new theory_of_mind_js_1.TheoryOfMind();
         affect = new affect_core_js_1.AffectCore();
-        for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind', 'affect']) {
+        for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'reasoningCortex', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind', 'affect']) {
             corpusCallosum.register(id);
         }
         enforcer = new priority_enforcer_js_1.PriorityEnforcer();
@@ -150,6 +398,7 @@ async function ensureInitialized(config) {
         brainSync = new brain_sync_js_1.BrainSync(brainDir);
         // Phase 5 modules (v0.3.0)
         knowledgeExtractor = new knowledge_extractor_js_1.KnowledgeExtractor();
+        loadPersistedKnowledge();
         lessonLearner = new lesson_learner_js_1.LessonLearner();
         proactiveEngine = new proactive_engine_js_1.ProactiveEngine();
         feedbackAnalyzer = new feedback_analyzer_js_1.FeedbackAnalyzer();
@@ -180,7 +429,7 @@ async function ensureInitialized(config) {
             assertiveness: personality.assertiveness ?? 70,
         });
         initialized = true;
-        console.log('[AgentBrain] Plugin v0.4.1 initialized — SQL storage + circadian + source routing online');
+        console.log('[AgentBrain] Plugin v0.4.1 initialized — SQL storage + circadian + source routing + brain whisper online');
         return true;
     }
     catch (err) {
@@ -189,10 +438,65 @@ async function ensureInitialized(config) {
     }
 }
 const _plugin = definePluginEntry({
-    id: 'agentbrain',
+    id: 'lightharu-agentbrain',
     name: 'AgentBrain',
     description: 'Brain-inspired cognitive architecture. Self-evolving personality, memory, emotions, skill learning.',
     register(api) {
+        api.on('before_agent_run', async (event, ctx) => {
+            const config = ctx?.pluginConfig;
+            if (config?.enabled === false)
+                return;
+            if (!await ensureInitialized(config))
+                return;
+            const text = typeof event?.prompt === 'string' ? event.prompt : '';
+            if (!text || text.length < 3)
+                return;
+            const msgContext = {
+                message: text,
+                senderId: event?.senderId || ctx?.senderId || 'openclaw-agent',
+                senderName: event?.senderName || 'User',
+                timestamp: new Date().toISOString(),
+                sessionId: ctx?.sessionKey || ctx?.sessionId || '',
+            };
+            const key = runtimeTurnKey(event, ctx);
+            runtimeTurns.set(key, msgContext);
+            lastMessageContext = msgContext;
+            try {
+                if (config?.enableEmotions !== false) {
+                    amygdala.process(msgContext);
+                }
+                const classification = thalamus.classify(msgContext);
+                if (config?.enablePrefrontal !== false) {
+                    prefrontal.plan(classification, text);
+                    prefrontal.updateWorkingMemory(`User: ${text.slice(0, 80)}`, 'before_agent_run', 1.0);
+                }
+                if (config?.enableSkillTracking !== false) {
+                    const skill = cerebellum.detectSkill(text);
+                    if (skill) {
+                        cerebellum.detectPattern(skill, msgContext.timestamp);
+                    }
+                    cerebellum.detectRelationshipPattern(text, msgContext.timestamp);
+                }
+                const feedback = feedbackAnalyzer.analyze(text, Date.now());
+                if (feedback.sentiment !== 'neutral' || feedback.markers.length > 0) {
+                    const rewardValue = feedbackAnalyzer.toRewardSignal(feedback);
+                    const skill = cerebellum.detectSkill(text);
+                    basalGanglia.processReward({
+                        timestamp: feedback.timestamp,
+                        taskType: skill || 'general',
+                        signal: rewardValue,
+                        source: feedback.confidence > 0.7 ? 'explicit' : 'implicit',
+                        context: `Feedback: ${feedback.markers.join(', ')} | RT: ${feedback.reactionTimeMs}ms`,
+                    });
+                }
+                interactionCount++;
+            }
+            catch (err) {
+                if (config?.logging) {
+                    console.warn('[AgentBrain] before_agent_run processing failed:', err.message);
+                }
+            }
+        }, { priority: 20 });
         // ─── HOOK: before_prompt_build ───
         // Inject brain context into every agent prompt
         api.on('before_prompt_build', async (event, ctx) => {
@@ -241,6 +545,17 @@ const _plugin = definePluginEntry({
                 // Amygdala emotion state
                 const emotionalState = amygdala.getState();
                 const relationship = amygdala.getRelationship(msgContext.senderId);
+                let feeling;
+                try {
+                    const affectState = affect.getState();
+                    feeling = {
+                        label: affectState.primary.label,
+                        intensity: affectState.primary.intensity,
+                        valence: affectState.dimensional.valence,
+                        arousal: affectState.dimensional.arousal,
+                    };
+                }
+                catch { /* affect state is best-effort */ }
                 // Lessons from past corrections
                 const relevantLessons = lessonLearner.findRelevantLessons(message);
                 const lessonsContext = lessonLearner.formatForInjection(relevantLessons);
@@ -263,6 +578,37 @@ const _plugin = definePluginEntry({
                 const suggestionsContext = suggestions.length > 0
                     ? `Proactive: ${suggestions.map(s => s.message).join(' | ')}`
                     : '';
+                const factsContext = getRelevantFactsContext(message);
+                const sessionId = ctx?.sessionKey || ctx?.sessionId || msgContext.sessionId || 'default';
+                let reasoningWhisper = '';
+                try {
+                    const previousWhisperId = pendingWhispers.get(sessionId);
+                    if (previousWhisperId && reasoningCortex) {
+                        const feedbackOutcome = (0, brain_whisper_format_js_1.inferFeedbackOutcome)(message, amygdala.detectSentiment(message));
+                        if (feedbackOutcome) {
+                            reasoningCortex.recordOutcome(previousWhisperId, feedbackOutcome.success, feedbackOutcome.userSatisfaction);
+                        }
+                        pendingWhispers.delete(sessionId);
+                    }
+                    if (reasoningCortex) {
+                        const whisper = await reasoningCortex.generateWhisper({
+                            userMessage: message,
+                            conversationHistory: Array.isArray(event?.messages) ? event.messages : undefined,
+                            timeoutSeconds: event?.timeoutSeconds ?? ctx?.timeoutSeconds,
+                            contextTokens: event?.contextTokens ?? event?.promptTokens ?? ctx?.contextTokens,
+                            elapsedSeconds: event?.elapsedSeconds ?? ctx?.elapsedSeconds,
+                        });
+                        if (whisper.tokenBudget > 0) {
+                            reasoningWhisper = (0, brain_whisper_format_js_1.formatWhisper)(whisper);
+                            pendingWhispers.set(sessionId, whisper.whisperId);
+                        }
+                    }
+                }
+                catch (error) {
+                    if (config?.logging) {
+                        console.warn('[AgentBrain] Brain Whisper generation failed:', error.message);
+                    }
+                }
                 // Record action for pattern learning
                 proactiveEngine.recordAction(classification.topic || 'general', new Date().toISOString());
                 // Build injection context
@@ -276,13 +622,16 @@ const _plugin = definePluginEntry({
                     activeHabits: cerebellum.getActiveHabits(),
                     workingMemory: prefrontal.getWorkingMemory(),
                     rewardTrend: basalGanglia.getRecentTrend(),
+                    feeling,
                     lessonsContext,
                     styleDirectives,
                     suggestionsContext,
+                    factsContext,
+                    reasoningWhisper,
                 };
                 // Generate injectable context
                 const brainContext = injector.inject(injectionContext, {
-                    maxTokens: config?.maxInjectionTokens ?? 250,
+                    maxTokens: (0, brain_whisper_format_js_1.getInjectionBudget)(reasoningWhisper, config?.maxInjectionTokens ?? 250),
                 });
                 if (!brainContext || brainContext.length < 20)
                     return;
@@ -498,12 +847,14 @@ const _plugin = definePluginEntry({
                     senderName: lastMessageContext.senderName,
                     timestamp: lastMessageContext.timestamp,
                 });
+                await hippocampus.flush();
                 // Knowledge extraction (structured facts)
-                knowledgeExtractor.extract(lastMessageContext.message, responseText, {
+                const knowledge = knowledgeExtractor.extract(lastMessageContext.message, responseText, {
                     senderName: lastMessageContext.senderName,
                     timestamp: lastMessageContext.timestamp,
                     previousFacts: knowledgeExtractor.getActiveFacts(),
                 });
+                persistExtractionResult(knowledge);
                 // Lesson learning (detect corrections)
                 const lesson = lessonLearner.analyze({
                     userMessage: lastMessageContext.message,
@@ -568,10 +919,15 @@ const _plugin = definePluginEntry({
         }, { priority: 20 });
         // ─── HOOK: agent_end ───
         // Session end: persist all brain state
-        api.on('agent_end', async (_event, ctx) => {
+        api.on('llm_output', async (event, ctx) => {
+            const config = ctx?.pluginConfig;
+            await processRuntimeCompletion(event, ctx, config);
+        }, { priority: 20 });
+        api.on('agent_end', async (event, ctx) => {
             const config = ctx?.pluginConfig;
             if (config?.enabled === false)
                 return;
+            await processRuntimeCompletion(event, ctx, config);
             if (!initialized)
                 return;
             try {
@@ -582,6 +938,7 @@ const _plugin = definePluginEntry({
                 await cerebellum.persist();
                 await basalGanglia.persist();
                 await prefrontal.persist();
+                await hippocampus.flush();
                 // Persist new modules
                 const lessons = lessonLearner.getLessons();
                 if (lessons.length > 0) {
@@ -631,6 +988,7 @@ const _plugin = definePluginEntry({
                         parietal: true,
                         insula: true,
                         metacognition: true,
+                        reasoningCortex: reasoningCortex !== null,
                         // Phase 3 module (v0.5.0) — REAL, wired into amygdala
                         neurochemistry: true,
                         // Phase 2 modules (v0.4.1) — declared so gateway won't override
@@ -729,6 +1087,32 @@ const _plugin = definePluginEntry({
                 }
                 const memories = await hippocampus.recall(params.query, params.topic || 'general');
                 return { memories, stats: hippocampus.getStats() };
+            },
+        });
+        api.registerTool({
+            name: 'agentbrain_graph',
+            description: 'Inspect AgentBrain memory graph state and optionally recall graph-related memories',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Optional topic or entity to inspect' },
+                    topic: { type: 'string', description: 'Optional memory topic filter' },
+                },
+            },
+            execute: async (_id, params, ctx) => {
+                if (!await ensureInitialized(ctx?.pluginConfig)) {
+                    return { error: 'AgentBrain not initialized' };
+                }
+                const query = typeof params?.query === 'string' ? params.query.trim() : '';
+                const topic = typeof params?.topic === 'string' && params.topic.trim()
+                    ? params.topic.trim()
+                    : 'general';
+                return {
+                    memoryStats: hippocampus.getStats(),
+                    temporalState: temporal.getState(),
+                    parietalState: parietal.getState(),
+                    relatedMemories: query ? await hippocampus.recall(query, topic) : [],
+                };
             },
         });
         api.registerTool({

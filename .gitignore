@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Data and databases
+*.db
+*.db-shm
+*.db-wal
+brain/
+.test-brain*/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+.nyc_output/
+test/
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+
+# Large model files and cache
+.cache/
+*.onnx
+*.bin
+
+# Logs
+*.log
+npm-debug.log*

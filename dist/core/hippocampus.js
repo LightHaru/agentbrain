@@ -13,6 +13,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Hippocampus = void 0;
 const sql_adapter_js_1 = require("../storage/sql-adapter.js");
 const vector_memory_js_1 = require("./vector-memory.js");
+const query_analyzer_js_1 = require("./query-analyzer.js");
 class Hippocampus {
     config;
     fileManager;
@@ -20,6 +21,7 @@ class Hippocampus {
     memories = [];
     heartbeatCount = 0;
     vectorMemory;
+    queryAnalyzer;
     constructor(config, fileManager) {
         this.config = config;
         this.fileManager = fileManager;
@@ -31,6 +33,7 @@ class Hippocampus {
             maxResults: config.maxRecallResults,
             minSimilarity: 0.5,
         }, brainDb);
+        this.queryAnalyzer = new query_analyzer_js_1.QueryAnalyzer();
     }
     /**
      * Initialize: load existing memories from brain files
@@ -43,19 +46,18 @@ class Hippocampus {
         console.log(`[Hippocampus] Loaded ${this.memories.length} memories, indexed ${indexed} new vectors`);
     }
     /**
-     * Recall relevant memories using vector similarity + keyword hybrid
-     * Phase 3 enhancement: filter by task-type tags to reduce noise
+     * Recall relevant memories using context-aware retrieval
+     * Phase 4 enhancement: query understanding + smart filtering + dynamic limit
      */
     async recall(query, topic) {
-        // Detect task type from topic/query for filtering
-        const taskType = this.detectTaskType(query, topic);
-        // Filter candidate pool by task type first (reduce noise)
-        const candidates = taskType
-            ? this.memories.filter(m => m.tags.includes(taskType) ||
-                m.tags.includes(topic) ||
-                m.type === 'procedural' // always consider how-to memories
-            )
-            : this.memories;
+        const queryContext = await this.queryAnalyzer.analyze(query, topic);
+        if (this.config.debug) {
+            console.log('[Hippocampus] Query context:', this.queryAnalyzer.formatDebug(queryContext));
+        }
+        const candidates = this.filterCandidates(queryContext);
+        if (this.config.debug) {
+            console.log(`[Hippocampus] Filtered candidates: ${candidates.length}/${this.memories.length}`);
+        }
         // Primary: vector-based semantic recall on filtered candidates
         const vectorResults = await this.vectorMemory.recall(query, candidates, topic);
         if (vectorResults.length > 0) {
@@ -64,29 +66,46 @@ class Hippocampus {
                 if (result.similarity > 0.5) {
                     result.memory.accessCount++;
                     result.memory.lastAccessed = new Date().toISOString();
+                    result.memory.confidence = Math.min(1, result.memory.confidence + 0.02);
                 }
             }
-            return vectorResults.map(r => r.memory);
+            const limit = this.queryAnalyzer.getMemoryLimit(queryContext);
+            return vectorResults.slice(0, limit).map(r => r.memory);
         }
         // Fallback: keyword-based recall (for when vector search returns nothing)
         return this.keywordRecall(query, topic);
     }
     /**
-     * Detect task type from query/topic for targeted recall
+     * Filter candidate memories based on query context
      */
-    detectTaskType(query, topic) {
-        const lower = (query + ' ' + topic).toLowerCase();
-        if (/code|bug|api|server|deploy|build|test|fix|implement/.test(lower))
-            return 'coding';
-        if (/content|blog|seo|article|write/.test(lower))
-            return 'content';
-        if (/crypto|token|coin|defi|swap|trade|contract/.test(lower))
-            return 'crypto';
-        if (/server|vps|nginx|docker|ssh|firewall/.test(lower))
-            return 'ops';
-        if (/plan|project|roadmap|milestone/.test(lower))
-            return 'project';
-        return null; // no filter, use all memories
+    filterCandidates(queryContext) {
+        let candidates = this.memories;
+        if (queryContext.filters.memoryTypes && queryContext.filters.memoryTypes.length > 0) {
+            candidates = candidates.filter(m => queryContext.filters.memoryTypes.includes(m.type));
+        }
+        if (queryContext.taskType) {
+            candidates = candidates.filter(m => m.tags.includes(queryContext.taskType) ||
+                m.type === 'procedural');
+        }
+        if (queryContext.entities.length > 0) {
+            const withEntities = candidates.filter(m => {
+                const memLower = m.content.toLowerCase();
+                return queryContext.entities.some(e => memLower.includes(e.toLowerCase()));
+            });
+            if (withEntities.length > 0) {
+                candidates = withEntities;
+            }
+        }
+        if (queryContext.filters.minConfidence) {
+            candidates = candidates.filter(m => m.confidence >= queryContext.filters.minConfidence);
+        }
+        if (candidates.length === 0) {
+            if (this.config.debug) {
+                console.log('[Hippocampus] Filters too aggressive, falling back to all memories');
+            }
+            candidates = this.memories;
+        }
+        return candidates;
     }
     /**
      * Fallback keyword-based recall
@@ -98,17 +117,24 @@ class Hippocampus {
             const words = queryLower.split(/\s+/);
             const matchCount = words.filter(w => memory.content.toLowerCase().includes(w) && w.length > 2).length;
             score += matchCount * 0.1;
-            if (memory.tags.includes(topic))
+            const topicMatch = memory.tags.includes(topic);
+            if (topicMatch)
                 score += 0.2;
             const daysSinceAccess = this.daysSince(memory.lastAccessed);
             score += Math.max(0, 0.1 - daysSinceAccess * 0.01);
-            return { memory, score };
+            return { memory, score, matchCount, topicMatch };
         });
         scored.sort((a, b) => b.score - a.score);
-        return scored
+        const recalled = scored
             .slice(0, this.config.maxRecallResults)
-            .filter(s => s.score > 0.3)
+            .filter(s => s.score > 0.3 && (s.matchCount > 0 || s.topicMatch))
             .map(s => s.memory);
+        for (const memory of recalled) {
+            memory.accessCount++;
+            memory.lastAccessed = new Date().toISOString();
+            memory.confidence = Math.min(1, memory.confidence + 0.01);
+        }
+        return recalled;
     }
     /**
      * Consolidate a conversation turn into memory
@@ -165,6 +191,20 @@ class Hippocampus {
         const candidates = [];
         const msg = turn.message;
         const resp = turn.response;
+        if (this.isLowValueMessage(msg)) {
+            if (resp && /price|\$[\d.]+|hashrate|online|offline|balance|paid|lãi|lỗ/i.test(resp)) {
+                const keyLine = resp.split('\n').find(l => /\$[\d.]+|\d+.*TH\/s|PRL\/ngày/i.test(l));
+                if (keyLine) {
+                    candidates.push({
+                        content: `[Finding] ${keyLine.slice(0, 200)}`,
+                        type: 'semantic',
+                        tags: [...this.extractTags(resp), 'finding'],
+                        importance: 0.6,
+                    });
+                }
+            }
+            return candidates;
+        }
         // Episodic: user made a decision or took an action
         if (/chốt|quyết định|đã làm|xong|done|deployed|published|bought|sold/i.test(msg)) {
             candidates.push({
@@ -249,7 +289,8 @@ class Hippocampus {
         this.memories = this.memories.filter(memory => {
             // Apply decay based on time since last access
             const daysSinceAccess = this.daysSince(memory.lastAccessed);
-            const decay = daysSinceAccess * this.config.memoryDecayRate;
+            const accessProtection = Math.min(0.8, memory.accessCount * 0.05);
+            const decay = daysSinceAccess * this.config.memoryDecayRate * (1 - accessProtection);
             memory.confidence = Math.max(0, memory.confidence - decay);
             // Prune if below threshold
             if (memory.confidence < this.config.minMemoryConfidence) {
@@ -288,6 +329,27 @@ class Hippocampus {
             score -= 0.3;
         }
         return score;
+    }
+    /**
+     * Skip chat noise unless it contains durable data.
+     */
+    isLowValueMessage(message) {
+        const text = message.trim();
+        if (/\$[\d.]+|\d+\s*(TH\/s|GH\/s|PRL|USD|USDT|GB|TB|ETH|SOL|BTC)|0x[a-fA-F0-9]{10,}|prl1[a-z0-9]{20,}/i.test(text)) {
+            return false;
+        }
+        if (text.length < 12)
+            return true;
+        if (/^[\/!]/.test(text))
+            return true;
+        const wordCount = text.split(/\s+/).length;
+        if (wordCount <= 2)
+            return true;
+        if (/^(gm|gn|hi|hello|chào|alo+|ê+|ơi+|aira+|em+|anh+)[\s!?.]*$/i.test(text))
+            return true;
+        if (/^(gà|mập|gà mập|baka|đụt|đần)[\s!?.]*$/i.test(text))
+            return true;
+        return false;
     }
     /**
      * Extract topic tags from text
@@ -333,6 +395,12 @@ class Hippocampus {
             procedural: this.memories.filter(m => m.type === 'procedural').length,
             vectorIndexed: vectorStats.indexed,
         };
+    }
+    /**
+     * Flush buffered memories without closing the vector store.
+     */
+    async flush() {
+        await this.persist();
     }
     /**
      * Shutdown: close vector DB

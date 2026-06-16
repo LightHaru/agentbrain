@@ -31,6 +31,8 @@ const knowledge_extractor_js_1 = require("../core/knowledge-extractor.js");
 const lesson_learner_js_1 = require("../core/lesson-learner.js");
 const personality_influence_js_1 = require("../core/personality-influence.js");
 const proactive_engine_js_1 = require("../core/proactive-engine.js");
+const reasoning_cortex_js_1 = require("../core/reasoning-cortex.js");
+const brain_whisper_format_js_1 = require("./brain-whisper-format.js");
 /**
  * Create the OpenClaw plugin instance
  */
@@ -56,10 +58,12 @@ function createOpenClawPlugin(userConfig) {
     const lessonLearner = new lesson_learner_js_1.LessonLearner();
     let personalityInfluence;
     const proactiveEngine = new proactive_engine_js_1.ProactiveEngine();
+    let reasoningCortex = null;
     let initialized = false;
     let interactionCount = 0;
     let startTime = Date.now();
     let lastAgentResponse = '';
+    const pendingWhispers = new Map();
     const manifest = {
         name: 'agentbrain',
         version: '0.2.0',
@@ -72,12 +76,15 @@ function createOpenClawPlugin(userConfig) {
             enableReflection: config.enableReflection,
             enableEmotions: config.enableEmotions,
             enableSkillTracking: config.enableSkillTracking,
+            reasoningWhisper: config.reasoningWhisper,
+            advisorModel: config.advisorModel,
         },
     };
     const plugin = {
         manifest,
         async initialize(overrideConfig) {
             const finalConfig = { ...config, ...overrideConfig };
+            pendingWhispers.clear();
             // Initialize file structure
             await storage.ensureBrainStructure();
             // Initialize core brain (Thalamus + Hippocampus)
@@ -106,6 +113,9 @@ function createOpenClawPlugin(userConfig) {
                 curiosity: personality.curiosity ?? 60,
                 assertiveness: personality.assertiveness ?? 70,
             });
+            reasoningCortex = finalConfig.reasoningWhisper?.enabled === false
+                ? null
+                : new reasoning_cortex_js_1.ReasoningCortex(finalConfig, brain.hippocampus, brain.temporal);
             // Load persisted lessons and patterns
             const lessonsData = await storage.readFile('learning/lessons.md');
             if (lessonsData) {
@@ -202,9 +212,37 @@ function createOpenClawPlugin(userConfig) {
             const suggestionsContext = suggestions.length > 0
                 ? `Proactive: ${suggestions.map(s => s.message).join(' | ')}`
                 : '';
-            // Step 12: Record action for pattern learning
+            // Step 12: Generate Brain Whisper
+            let reasoningWhisper = '';
+            try {
+                const previousWhisperId = pendingWhispers.get(context.sessionId);
+                if (previousWhisperId && reasoningCortex) {
+                    const feedbackOutcome = (0, brain_whisper_format_js_1.inferFeedbackOutcome)(context.message, amygdala.detectSentiment(context.message));
+                    if (feedbackOutcome) {
+                        reasoningCortex.recordOutcome(previousWhisperId, feedbackOutcome.success, feedbackOutcome.userSatisfaction);
+                    }
+                    pendingWhispers.delete(context.sessionId);
+                }
+                if (reasoningCortex) {
+                    const whisper = await reasoningCortex.generateWhisper({
+                        userMessage: context.message,
+                        conversationHistory: undefined,
+                        timeoutSeconds: context.timeoutSeconds,
+                        contextTokens: context.contextTokens,
+                        elapsedSeconds: context.elapsedSeconds,
+                    });
+                    if (whisper.tokenBudget > 0) {
+                        reasoningWhisper = (0, brain_whisper_format_js_1.formatWhisper)(whisper);
+                        pendingWhispers.set(context.sessionId, whisper.whisperId);
+                    }
+                }
+            }
+            catch (error) {
+                console.error('[AgentBrain] ReasoningCortex error:', error);
+            }
+            // Step 13: Record action for pattern learning
             proactiveEngine.recordAction(classification.topic || 'general', context.timestamp);
-            // Step 13: Build injection context
+            // Step 14: Build injection context
             const injectionContext = {
                 classification,
                 emotionalState: emotionalResult.updatedState,
@@ -219,9 +257,12 @@ function createOpenClawPlugin(userConfig) {
                 lessonsContext,
                 styleDirectives,
                 suggestionsContext,
+                reasoningWhisper,
             };
-            // Step 14: Generate injectable context (with priority enforcement)
-            const brainContext = injector.inject(injectionContext);
+            // Step 15: Generate injectable context (with priority enforcement)
+            const brainContext = injector.inject(injectionContext, {
+                maxTokens: (0, brain_whisper_format_js_1.getInjectionBudget)(reasoningWhisper),
+            });
             interactionCount++;
             return brainContext;
         },
@@ -337,6 +378,10 @@ function createOpenClawPlugin(userConfig) {
             await storage.writeFile('knowledge/entities.md', JSON.stringify(knowledgeExtractor.getEntities(), null, 2));
             // Shutdown hippocampus (closes vector DB)
             await brain.hippocampus.shutdown();
+            if (typeof storage.close === 'function') {
+                storage.close();
+            }
+            pendingWhispers.clear();
             initialized = false;
             console.log('[AgentBrain:OpenClaw] Shutdown complete — brain state persisted');
         },

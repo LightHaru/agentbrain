@@ -13,7 +13,7 @@
 
 import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 export interface BrainSnapshot {
   version: string;
@@ -116,9 +116,9 @@ export class BrainSync {
   async restore(snapshot: BrainSnapshot): Promise<void> {
     for (const [relativePath, content] of Object.entries(snapshot.files)) {
       const fullPath = join(this.brainDir, relativePath);
-      const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+      const dir = dirname(fullPath);
 
-      if (!existsSync(dir)) {
+      if (dir && dir !== '.' && !existsSync(dir)) {
         await mkdir(dir, { recursive: true });
       }
 

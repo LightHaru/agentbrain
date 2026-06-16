@@ -107,9 +107,14 @@ class Amygdala {
      * Process incoming message: detect sentiment, assess threats, update state
      */
     process(context) {
-        const userSentiment = this.detectSentiment(context.message);
         const threat = this.assessThreat(context.message);
         const bonding = this.detectBonding(context.message);
+        const rel = this.relationships.get(context.senderId);
+        const trust = rel?.trustLevel ?? 10;
+        let userSentiment = this.detectSentiment(context.message);
+        if (this.detectPlayfulTease(context.message) && !threat.isThreat && trust >= 50) {
+            userSentiment = Math.max(userSentiment, 0.15);
+        }
         // Update agent emotional state based on user sentiment
         this.updateEmotionalState(userSentiment, threat, bonding);
         // Update relationship
@@ -119,6 +124,14 @@ class Amygdala {
             threat,
             updatedState: { ...this.currentState },
         };
+    }
+    /**
+     * Detect trusted playful teasing without real criticism.
+     */
+    detectPlayfulTease(message) {
+        const teasing = /gà mập|gà|mập|baka|hihi|haha|hehe|trêu/i.test(message);
+        const realNegative = /\bsai\b|\blỗi\b|hỏng|fail|wrong|error|broken|tệ|dở|kém|ghét|bực|tức|cáu|thất vọng|chậm|treo|đơ/i.test(message);
+        return teasing && !realNegative;
     }
     /**
      * Detect user sentiment from message (-1 to 1)
