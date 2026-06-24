@@ -1,5 +1,5 @@
-/**
- * AgentBrain — OpenClaw Plugin Entry Point
+﻿/**
+ * AgentBrain â€” OpenClaw Plugin Entry Point
  * 
  * Hooks into OpenClaw lifecycle events:
  * - before_prompt_build: inject brain context into agent prompt
@@ -11,7 +11,7 @@
  * OpenClaw gateway loads this file and calls .register(api).
  */
 
-// Inline definePluginEntry — matches OpenClaw's expected export shape
+// Inline definePluginEntry â€” matches OpenClaw's expected export shape
 function definePluginEntry(def: any) { return def; }
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -48,6 +48,9 @@ import { PersonalityInfluence } from '../core/personality-influence.js';
 import { ProactiveEngine } from '../core/proactive-engine.js';
 import { FeedbackAnalyzer } from '../core/feedback-analyzer.js';
 import { PersonalityAdjuster } from '../core/personality-adjuster.js';
+import { MemoryReviewer } from '../core/memory-reviewer.js';
+import { OutcomeTracker } from '../core/outcome-tracker.js';
+import { ReviewScheduler, createDefaultScheduleConfig } from '../core/review-scheduler.js';
 import { ReasoningCortex } from '../core/reasoning-cortex.js';
 import { formatWhisper, getInjectionBudget, inferFeedbackOutcome } from '../integration/brain-whisper-format.js';
 
@@ -83,6 +86,9 @@ let personalityInfluence: PersonalityInfluence;
 let proactiveEngine: ProactiveEngine;
 let feedbackAnalyzer: FeedbackAnalyzer;
 let personalityAdjuster: PersonalityAdjuster;
+let memoryReviewer: MemoryReviewer | null = null;
+let outcomeTracker: OutcomeTracker | null = null;
+let reviewScheduler: ReviewScheduler | null = null;
 let reasoningCortex: ReasoningCortex | null = null;
 let interactionCount = 0;
 let heartbeatCount = 0;
@@ -224,7 +230,7 @@ function getRelevantFactsContext(message: string, limit = 5): string {
     for (const token of tokens) {
       if (haystack.includes(token)) score += token.length >= 5 ? 2 : 1;
     }
-    if (/mật\s+danh|codename|code\s+name/i.test(`${fact.subject} ${fact.relation}`)) score += 4;
+    if (/máº­t\s+danh|codename|code\s+name/i.test(`${fact.subject} ${fact.relation}`)) score += 4;
     return { fact, score };
   });
 
@@ -376,7 +382,7 @@ async function ensureInitialized(config: any): Promise<boolean> {
     amygdala = new Amygdala(brainConfig, storage as any);
     await amygdala.initialize();
 
-    // Phase 3: Neurochemistry — neuromodulators bias mood with real momentum
+    // Phase 3: Neurochemistry â€” neuromodulators bias mood with real momentum
     neurochem = new Neurochemistry(brainConfig, storage as any);
     await neurochem.initialize();
     amygdala.attachNeurochemistry(neurochem);
@@ -402,7 +408,7 @@ async function ensureInitialized(config: any): Promise<boolean> {
       ? null
       : new ReasoningCortex(brainConfig, hippocampus, temporal);
 
-    // Phase 2 modules (v0.6.0) — now REAL, wired into the pipeline
+    // Phase 2 modules (v0.6.0) â€” now REAL, wired into the pipeline
     hypothalamus = new Hypothalamus('Asia/Ho_Chi_Minh');
     brainstem = new Brainstem();
     corpusCallosum = new CorpusCallosum();
@@ -448,7 +454,7 @@ async function ensureInitialized(config: any): Promise<boolean> {
     });
 
     initialized = true;
-    console.log('[AgentBrain] Plugin v0.4.1 initialized — SQL storage + circadian + source routing + brain whisper online');
+    console.log('[AgentBrain] Plugin v0.4.1 initialized â€” SQL storage + circadian + source routing + brain whisper online');
     return true;
   } catch (err: any) {
     console.warn('[AgentBrain] Initialization failed:', err.message);
@@ -530,7 +536,7 @@ const _plugin = definePluginEntry({
       { priority: 20 }
     );
 
-    // ─── HOOK: before_prompt_build ───
+    // â”€â”€â”€ HOOK: before_prompt_build â”€â”€â”€
     // Inject brain context into every agent prompt
     api.on(
       'before_prompt_build',
@@ -703,7 +709,7 @@ const _plugin = definePluginEntry({
       { priority: 20 } // after memory-graph (priority 10)
     );
 
-    // ─── HOOK: message_received ───
+    // â”€â”€â”€ HOOK: message_received â”€â”€â”€
     // Process incoming message: classify, detect emotion, plan
     api.on(
       'message_received',
@@ -822,7 +828,7 @@ const _plugin = definePluginEntry({
             cerebellum.detectRelationshipPattern(text, msgContext.timestamp);
           }
 
-          // ─── Phase 2 modules (v0.6.0) — real processing per message ───
+          // â”€â”€â”€ Phase 2 modules (v0.6.0) â€” real processing per message â”€â”€â”€
           try {
             const cls = thalamus.classify(msgContext);
             const sentiment = amygdala.detectSentiment(text);
@@ -857,13 +863,13 @@ const _plugin = definePluginEntry({
               corpusCallosum.flagConflict('amygdala', 'hypothalamus', 'emotion alarmed vs drive state calm');
             }
 
-            // AffectCore (v0.8.0): GENERATE a discrete emotion via appraisal —
+            // AffectCore (v0.8.0): GENERATE a discrete emotion via appraisal â€”
             // same valence yields different feeling by agency/coping/novelty.
             try {
               // BUGFIX (Phase 2): threat must come from a REAL threat assessment of
               // THIS message, not from the lingering persisted mood. Keying isThreat
               // off emo.mood === 'alarmed' created a self-feeding loop: once alarmed,
-              // every later neutral message ('Xong chưa', 'Ok em làm đi') was re-scored
+              // every later neutral message ('Xong chÆ°a', 'Ok em lÃ m Ä‘i') was re-scored
               // as a threat -> anger -> stays alarmed forever.
               const realThreat = amygdala.assessThreat(text);
               const isThreat = realThreat.isThreat || cls.urgency === 'critical';
@@ -897,7 +903,7 @@ const _plugin = definePluginEntry({
       { priority: 20 }
     );
 
-    // ─── HOOK: message_sent ───
+    // â”€â”€â”€ HOOK: message_sent â”€â”€â”€
     // Post-response: consolidate memory, track skills, process reward
     api.on(
       'message_sent',
@@ -941,7 +947,7 @@ const _plugin = definePluginEntry({
             timestamp: lastMessageContext.timestamp,
           });
           if (lesson && config?.logging) {
-            console.log(`[AgentBrain] Lesson learned: ${lesson.type} — ${lesson.right.slice(0, 60)}`);
+            console.log(`[AgentBrain] Lesson learned: ${lesson.type} â€” ${lesson.right.slice(0, 60)}`);
           }
 
           // Detect sentiment for reward
@@ -1006,7 +1012,7 @@ const _plugin = definePluginEntry({
       { priority: 20 }
     );
 
-    // ─── HOOK: agent_end ───
+    // â”€â”€â”€ HOOK: agent_end â”€â”€â”€
     // Session end: persist all brain state
     api.on(
       'llm_output',
@@ -1050,7 +1056,7 @@ const _plugin = definePluginEntry({
           }
 
           if (config?.logging) {
-            console.log(`[AgentBrain] Session ended — brain state persisted (${interactionCount} interactions, ${lessons.length} lessons, ${facts.length} facts)`);
+            console.log(`[AgentBrain] Session ended â€” brain state persisted (${interactionCount} interactions, ${lessons.length} lessons, ${facts.length} facts)`);
           }
         } catch (err: any) {
           console.warn('[AgentBrain] agent_end persist failed:', err.message);
@@ -1062,7 +1068,7 @@ const _plugin = definePluginEntry({
     // NOTE: OpenClaw has no 'heartbeat' typed hook.
     // Heartbeat detection is handled inside message_received via pattern match.
 
-    // ─── TOOLS ───
+    // â”€â”€â”€ TOOLS â”€â”€â”€
 
     api.registerTool({
       name: 'agentbrain_status',
@@ -1090,9 +1096,9 @@ const _plugin = definePluginEntry({
             insula: true,
             metacognition: true,
             reasoningCortex: reasoningCortex !== null,
-            // Phase 3 module (v0.5.0) — REAL, wired into amygdala
+            // Phase 3 module (v0.5.0) â€” REAL, wired into amygdala
             neurochemistry: true,
-            // Phase 2 modules (v0.4.1) — declared so gateway won't override
+            // Phase 2 modules (v0.4.1) â€” declared so gateway won't override
             hypothalamus: true,
             brainstem: true,
             corpusCallosum: true,
@@ -1112,7 +1118,7 @@ const _plugin = definePluginEntry({
           parietalState: parietal.getState(),
           insulaState: insula.getState(),
           metacognitionState: metacognition.getState(),
-          // Phase 2 modules (v0.6.0) — REAL state from wired modules
+          // Phase 2 modules (v0.6.0) â€” REAL state from wired modules
           hypothalamusState: hypothalamus.getState(),
           brainstemState: brainstem.getState(),
           corpusCallosumState: corpusCallosum.getState(),
@@ -1306,6 +1312,140 @@ const _plugin = definePluginEntry({
           return { snapshots: await brainSync.listSnapshots() };
         }
         return { error: 'Unknown action' };
+   
+      }
+    });
+    // Memory Review Tool
+    api.registerTool({
+      name: 'agentbrain_review_memories',
+      description: 'Trigger a memory review cycle to analyze patterns, detect contradictions, and generate insights',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: {
+            type: 'string',
+            enum: ['recent', 'all', 'topic-specific'],
+            description: 'Scope of memories to review',
+          },
+          topic: {
+            type: 'string',
+            description: 'Topic to focus on (for topic-specific reviews)',
+          },
+        },
+      },
+      execute: async (_id: string, params: any, ctx: any) => {
+        if (!await ensureInitialized(ctx?.pluginConfig)) {
+          return { error: 'AgentBrain not initialized' };
+        }
+        
+        const scope = {
+          type: params.scope || 'recent',
+          trigger: 'manual' as const,
+          topic: params.topic,
+        };
+        
+        if (!memoryReviewer) return { error: 'Learning system not initialized' };
+        const cycle = await (memoryReviewer as MemoryReviewer).runReviewCycle(scope);
+        
+        return {
+          reviewId: cycle.id,
+          memoriesReviewed: cycle.memoriesReviewed,
+          findingsCount: cycle.findings.length,
+          actionsCount: cycle.actions.length,
+          executionTimeMs: cycle.executionTimeMs,
+          findings: cycle.findings.slice(0, 10),
+          insights: cycle.findings.filter((f: any) => f.type === 'insight').length,
+        };
+      },
+    });
+
+    // Learning Statistics Tool
+    api.registerTool({
+      name: 'agentbrain_learning_stats',
+      description: 'Get statistics about learning performance, strategy effectiveness, and improvement trends',
+      parameters: {},
+      execute: async (_id: string, _params: any, ctx: any) => {
+        if (!await ensureInitialized(ctx?.pluginConfig)) {
+          return { error: 'AgentBrain not initialized' };
+        }
+        
+        if (!outcomeTracker || !memoryReviewer) return { error: 'Learning system not initialized' };
+        const stats = (outcomeTracker as OutcomeTracker).getStatistics();
+        const reviewStats = (memoryReviewer as MemoryReviewer).getStatistics();
+        const schedulerStatus = reviewScheduler ? (reviewScheduler as ReviewScheduler).getStatus() : null;
+        
+        return {
+          learning: {
+            totalTurns: stats.totalTurns,
+            successRate: `${(stats.successRate * 100).toFixed(1)}%`,
+            avgReward: stats.avgReward.toFixed(2),
+            trend: stats.recentTrend,
+            avgResponseTime: `${stats.avgResponseTime.toFixed(0)}ms`,
+            confidenceAccuracy: `${(stats.avgConfidenceAccuracy * 100).toFixed(1)}%`,
+          },
+          strategies: stats.strategyPerformance.map((s: any) => ({
+            name: s.strategyName,
+            successRate: `${(s.successRate * 100).toFixed(1)}%`,
+            timesUsed: s.timesUsed,
+            avgReward: s.avgReward.toFixed(2),
+          })),
+          memoryReview: {
+            totalReviews: reviewStats.totalReviews,
+            totalFindings: reviewStats.totalFindings,
+            totalInsights: reviewStats.totalInsights,
+            lastReview: reviewStats.lastReviewTime,
+            avgReviewTime: `${reviewStats.avgReviewTime.toFixed(0)}ms`,
+          },
+          scheduler: schedulerStatus,
+          metaLearnings: stats.metaLearnings.slice(0, 5),
+        };
+      },
+    });
+
+    // Insights Tool
+    api.registerTool({
+      name: 'agentbrain_insights',
+      description: 'Get insights generated from memory analysis and learning patterns',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Number of insights to retrieve',
+            default: 20,
+          },
+        },
+      },
+      execute: async (_id: string, params: any, ctx: any) => {
+        if (!await ensureInitialized(ctx?.pluginConfig)) {
+          return { error: 'AgentBrain not initialized' };
+        }
+        
+        if (!memoryReviewer || !outcomeTracker) return { error: 'Learning system not initialized' };
+        const limit = params.limit || 20;
+        const insights = (memoryReviewer as MemoryReviewer).getInsights(limit);
+        const metaLearnings = (outcomeTracker as OutcomeTracker).getMetaLearnings();
+        
+        return {
+          memoryInsights: insights.map((i: any) => ({
+            id: i.id,
+            title: i.title,
+            content: i.content,
+            type: i.type,
+            confidence: `${(i.confidence * 100).toFixed(0)}%`,
+            timestamp: i.timestamp,
+            sourceMemories: i.sourceMemories.length,
+          })),
+          metaLearnings: metaLearnings.map((ml: any) => ({
+            id: ml.id,
+            title: ml.title,
+            description: ml.description,
+            type: ml.type,
+            confidence: `${(ml.confidence * 100).toFixed(0)}%`,
+            applied: ml.applied,
+            timestamp: ml.timestamp,
+          })),
+        };
       },
     });
   },
@@ -1313,3 +1453,12 @@ const _plugin = definePluginEntry({
 
 // OpenClaw plugin loader expects module.exports directly
 export = _plugin;
+
+
+
+
+
+
+
+
+

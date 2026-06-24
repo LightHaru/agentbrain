@@ -1,5 +1,5 @@
-/**
- * AgentBrain Engine — agent-neutral SDK facade (v0.7.0)
+﻿/**
+ * AgentBrain Engine â€” agent-neutral SDK facade (v0.7.0)
  *
  * The OpenClaw plugin (src/plugin/entry.ts) wires the brain into one specific
  * host. This module exposes the SAME cognitive core as a clean, importable
@@ -14,7 +14,7 @@
  * Design goals (addressing the v0.6.0 audit findings):
  *  - One entrypoint owns orchestration; the caller never wires modules by hand.
  *  - Storage and the clock are injectable adapters (default: in-memory + Date.now).
- *  - processTurn() returns a typed, cloned snapshot — no live internal references.
+ *  - processTurn() returns a typed, cloned snapshot â€” no live internal references.
  */
 import { BrainConfig, defaultConfig } from './core/config.js';
 import { BrainFileManager } from './storage/md-writer.js';
@@ -44,7 +44,10 @@ export interface BrainEngineOptions {
   clock?: Clock;
   /** IANA timezone for circadian/hypothalamus. Default Asia/Ho_Chi_Minh. */
   timezone?: string;
-}
+
+  enableMemoryReview?: boolean;
+  reviewScheduleConfig?: Partial<ScheduleConfig>;
+  enableOutcomeTracking?: boolean;}
 
 export interface TurnInput {
   message: string;
@@ -88,6 +91,14 @@ export interface BrainEngine {
   getState(): Record<string, unknown>;
   /** Direct access to the storage adapter (e.g. MemoryStorage.dump()). */
   readonly storage: BrainFileManager;
+  reviewMemories(scope?: Partial<import('./core/memory-reviewer.js').ReviewScope>): Promise<import('./core/memory-reviewer.js').MemoryReviewCycle>;
+  getOutcomeStats(): import('./core/outcome-tracker.js').OutcomeStatistics;
+  getReviewStats(): ReturnType<import('./core/memory-reviewer.js').MemoryReviewer['getStatistics']>;
+  getSchedulerStatus(): ReturnType<import('./core/review-scheduler.js').ReviewScheduler['getStatus']> | null;
+  getStrategyWeights(): Map<string, number>;
+  getInsights(limit?: number): ReturnType<import('./core/memory-reviewer.js').MemoryReviewer['getInsights']>;
+  getMetaLearnings(): ReturnType<import('./core/outcome-tracker.js').OutcomeTracker['getMetaLearnings']>;
+  shutdown(): Promise<void>;
 }
 
 const ALL_MODULES = [
@@ -97,9 +108,15 @@ const ALL_MODULES = [
 
 /**
  * Create a fully-wired, agent-neutral brain engine.
- * Every module is instantiated and connected internally — the caller just
+ * Every module is instantiated and connected internally â€” the caller just
  * calls init() then processTurn().
  */
+import { MemoryReviewer } from './core/memory-reviewer.js';
+import { OutcomeTracker } from './core/outcome-tracker.js';
+import { ReviewScheduler, createDefaultScheduleConfig, type ScheduleConfig } from './core/review-scheduler.js';
+import { FeedbackAnalyzer } from './core/feedback-analyzer.js';
+import { LessonLearner } from './core/lesson-learner.js';
+
 export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine {
   const config: BrainConfig = { ...defaultConfig, ...(options.config ?? {}) };
   const clock: Clock = options.clock ?? (() => Date.now());
@@ -118,6 +135,21 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
   const globalWorkspace = new GlobalWorkspace();
   const theoryOfMind = new TheoryOfMind();
   const affect = new AffectCore();
+  
+  // Learning system modules
+  const feedbackAnalyzer = new FeedbackAnalyzer();
+  const lessonLearner = new LessonLearner();
+  const memoryReviewer = new MemoryReviewer(hippocampus, config);
+  const outcomeTracker = new OutcomeTracker(hippocampus, lessonLearner, feedbackAnalyzer, config);
+  
+  let reviewScheduler: ReviewScheduler | null = null;
+  if (options.enableMemoryReview !== false) {
+    const scheduleConfig = {
+      ...createDefaultScheduleConfig(),
+      ...options.reviewScheduleConfig,
+    };
+    reviewScheduler = new ReviewScheduler(memoryReviewer, hippocampus, scheduleConfig);
+  }
 
   for (const id of ALL_MODULES) corpusCallosum.register(id);
 
@@ -130,7 +162,7 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
   }
 
   const engine: BrainEngine = {
-    version: '0.7.0',
+    version: '0.10.0',
     storage,
 
     async init(): Promise<void> {
@@ -140,6 +172,50 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
       await amygdala.initialize?.();
       await hippocampus.initialize();
       initialized = true;
+
+      if (reviewScheduler) {
+        reviewScheduler.start();
+      }
+    },
+
+    async reviewMemories(scope?: Partial<import('./core/memory-reviewer.js').ReviewScope>): Promise<import('./core/memory-reviewer.js').MemoryReviewCycle> {
+      return await memoryReviewer.runReviewCycle({
+        type: scope?.type || 'recent',
+        trigger: scope?.trigger || 'manual',
+        timeWindow: scope?.timeWindow,
+        topic: scope?.topic,
+      });
+    },
+
+    getOutcomeStats(): import('./core/outcome-tracker.js').OutcomeStatistics {
+      return outcomeTracker.getStatistics();
+    },
+
+    getReviewStats() {
+      return memoryReviewer.getStatistics();
+    },
+
+    getSchedulerStatus() {
+      return reviewScheduler?.getStatus() || null;
+    },
+
+    getStrategyWeights(): Map<string, number> {
+      return outcomeTracker.getAllStrategyWeights();
+    },
+
+    getInsights(limit?: number) {
+      return memoryReviewer.getInsights(limit);
+    },
+
+    getMetaLearnings() {
+      return outcomeTracker.getMetaLearnings();
+    },
+
+    async shutdown(): Promise<void> {
+      if (reviewScheduler) {
+        reviewScheduler.stop();
+      }
+      await hippocampus.shutdown();
     },
 
     async processTurn(input: TurnInput): Promise<TurnResult> {
@@ -204,7 +280,7 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
       const focus = globalWorkspace.getState().currentFocus;
 
       // 9. AffectCore: generate a discrete emotion by appraising the situation
-      //    against the agent's goals, agency, coping and novelty — not keywords.
+      //    against the agent's goals, agency, coping and novelty â€” not keywords.
       const hypo = hypothalamus.getState();
       const sev = amy.threat.severity;
       const threatWeight = sev === 'critical' ? 1 : sev === 'high' ? 0.75 : sev === 'medium' ? 0.5 : sev === 'low' ? 0.3 : 0;
@@ -297,3 +373,28 @@ export function createBrainEngine(options: BrainEngineOptions = {}): BrainEngine
 }
 
 export default createBrainEngine;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
