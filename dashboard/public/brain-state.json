@@ -1,0 +1,160 @@
+{
+  "timestamp": "2026-07-12T21:32:48.643Z",
+  "live": true,
+  "source": "/root/.openclaw/data/agentbrain/brain.db",
+  "counts": {
+    "facts": 44,
+    "lessons": 11,
+    "reflections": 0,
+    "knowledge": 48
+  },
+  "regions": [
+    {
+      "id": "memory",
+      "name": "Memory",
+      "color": "#8B5CF6",
+      "position": [
+        0,
+        0.5,
+        0.8
+      ],
+      "active": true,
+      "activityLevel": 0.9
+    },
+    {
+      "id": "emotion",
+      "name": "Emotion",
+      "color": "#EC4899",
+      "position": [
+        -0.7,
+        0,
+        0.3
+      ],
+      "active": true,
+      "activityLevel": 0.542
+    },
+    {
+      "id": "executive",
+      "name": "Executive",
+      "color": "#3B82F6",
+      "position": [
+        0,
+        0.8,
+        0
+      ],
+      "active": false,
+      "activityLevel": 0.05
+    },
+    {
+      "id": "reward",
+      "name": "Reward",
+      "color": "#10B981",
+      "position": [
+        0.7,
+        0,
+        0.3
+      ],
+      "active": true,
+      "activityLevel": 0.15714285714285714
+    },
+    {
+      "id": "reflection",
+      "name": "Reflection",
+      "color": "#F59E0B",
+      "position": [
+        0,
+        -0.5,
+        0.8
+      ],
+      "active": false,
+      "activityLevel": 0.05
+    },
+    {
+      "id": "skill",
+      "name": "Skill",
+      "color": "#06B6D4",
+      "position": [
+        -0.5,
+        -0.3,
+        -0.5
+      ],
+      "active": false,
+      "activityLevel": 0.05
+    },
+    {
+      "id": "routing",
+      "name": "Routing",
+      "color": "#EF4444",
+      "position": [
+        0.5,
+        -0.3,
+        -0.5
+      ],
+      "active": true,
+      "activityLevel": 0.6285714285714286
+    }
+  ],
+  "personality": {
+    "independence": 50,
+    "loyalty": 90,
+    "sassiness": 50,
+    "protectiveness": 50,
+    "antiHallucination": 90,
+    "engineerMindset": 90,
+    "craftsmanship": 85,
+    "cuteness": 50,
+    "attachment": 57
+  },
+  "emotions": {
+    "mood": "alert",
+    "intensity": 0.542,
+    "recentEmotions": []
+  },
+  "skills": {},
+  "memories": {
+    "total": 70,
+    "byType": {
+      "episodic": 2,
+      "semantic": 48,
+      "procedural": 20
+    },
+    "recentAccess": [
+      {
+        "id": "mem-mrib4uq7-g5u9yc",
+        "content": "[Finding] Giá Bitcoin hiện tại: **~$102,753 USD** (theo CoinMarketCap, 13/07/2026 04:30 GMT+7)",
+        "timestamp": "2026-07-12T21:30:18.225Z"
+      },
+      {
+        "id": "mem-mri4xdrz-vz940j",
+        "content": "[Emotion] User: Giá token PRL bao nhiêu, mà đúng token của dự án Pearl không em? Verify nguồn kỹ giú",
+        "timestamp": "2026-07-12T21:30:18.211Z"
+      },
+      {
+        "id": "mem-mri4xdtk-zv2d52",
+        "content": "[Technical] User: Giá token PRL bao nhiêu, mà đúng token của dự án Pearl không em? Verify nguồn kỹ g",
+        "timestamp": "2026-07-12T21:30:18.211Z"
+      },
+      {
+        "id": "mem-mri5ha23-39qz8g",
+        "content": "[Fact] User: bây giờ là mấy giờ rồi em, đang buổi nào ngày mấy?",
+        "timestamp": "2026-07-12T21:30:18.211Z"
+      },
+      {
+        "id": "mem-mri4xds1-uf1zq5",
+        "content": "[Finding] Giá hiện tại: **~$0.3994 USD** (Kryptex, cập nhật 12/07/2026)",
+        "timestamp": "2026-07-12T21:30:09.365Z"
+      },
+      {
+        "id": "mem-mri6w7vc-xyfxtp",
+        "content": "[Fact] User: Bữa anh reg 2 tài khoản aws nay nó ban 1 cái bà rồi còn 1 cái mà hong dùng được models ",
+        "timestamp": "2026-07-12T21:30:09.365Z"
+      }
+    ]
+  },
+  "motivation": {
+    "curiosity": 56,
+    "achievement": 88,
+    "social": 50,
+    "safety": 85
+  }
+}

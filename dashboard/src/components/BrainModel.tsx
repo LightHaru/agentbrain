@@ -68,6 +68,11 @@ function RegionMarker({ region, onClick }: RegionMarkerProps) {
     }
   });
 
+  const handleClick = (e: THREE.Event) => {
+    e.stopPropagation();
+    onClick();
+  };
+
   return (
     <group position={region.position}>
       {/* Glow effect */}
@@ -81,7 +86,7 @@ function RegionMarker({ region, onClick }: RegionMarkerProps) {
       </mesh>
 
       {/* Region marker */}
-      <mesh ref={meshRef} onClick={onClick}>
+      <mesh ref={meshRef} onClick={handleClick}>
         <sphereGeometry args={[0.3, 32, 32]} />
         <meshStandardMaterial
           color={region.color}

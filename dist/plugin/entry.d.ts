@@ -1,5 +1,5 @@
 /**
- * AgentBrain — OpenClaw Plugin Entry Point
+ * AgentBrain â€” OpenClaw Plugin Entry Point
  *
  * Hooks into OpenClaw lifecycle events:
  * - before_prompt_build: inject brain context into agent prompt

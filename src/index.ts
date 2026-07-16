@@ -55,10 +55,60 @@ export { BrainFileManager } from './storage/md-writer.js';
 export { MemoryStorage } from './storage/memory-storage.js';
 export { BrainConfig, defaultConfig } from './core/config.js';
 
+// Unified embedding service (v0.14.0) — store vectors "like people do"
+export { EmbeddingService, getEmbeddingService, l2normalize, cosineSim, EMBED_MODEL_ID, EMBED_DIM } from './core/embedding-service.js';
+
+// Self-distillation (v0.15.0) — learn from own successful conversations
+export { SelfDistiller } from './training/self-distiller.js';
+export type { SelfDistillReport } from './training/self-distiller.js';
+
+// Knowledge storage + conversation memory (v0.14.0)
+export { KnowledgeStore } from './core/knowledge-store.js';
+export type { KnowledgeItem, KnowledgeKind, SearchHit } from './core/knowledge-store.js';
+export { ConversationLog } from './core/conversation-log.js';
+export type { ConversationTurnRow } from './core/conversation-log.js';
+
+// Learning-over-time modules (v0.13.0)
+export { ErrorLedger } from './core/error-ledger.js';
+export type { ErrorEntry } from './core/error-ledger.js';
+export { SemanticPlaybookMatcher } from './core/semantic-playbook-matcher.js';
+
+// Training / distillation (v0.13.0)
+export { DistillationTrainer } from './training/distillation-trainer.js';
+export type { TrainingRunReport, EpochReport, TrainerStore } from './training/distillation-trainer.js';
+export { OPUS_DISTILLATION } from './training/distillation-corpus.js';
+export { runBenchmark, DEFAULT_PROBES } from './training/benchmark.js';
+export {
+  registerLearnedPlaybook, getLearnedPlaybooks, countPlaybooks, clearLearnedPlaybooks,
+} from './core/reasoning-playbooks.js';
+
 // Integration
 export { createOpenClawPlugin } from './integration/openclaw-plugin.js';
 export { PriorityEnforcer } from './integration/priority-enforcer.js';
 export { ContextInjector } from './integration/context-injector.js';
+
+// Adaptive-RAG upgrades (v0.15.2)
+export { SearchAdvisor } from './core/search-advisor.js';
+export type { SearchAdvice, SearchUrgency } from './core/search-advisor.js';
+export { RelevanceCritic } from './core/relevance-critic.js';
+export { MemoryGraph } from './core/memory-graph.js';
+export { FactChangeTracker } from './core/fact-change-tracker.js';
+export * as ForgettingCurve from './core/forgetting-curve.js';
+export { AutoReflector } from './core/auto-reflector.js';
+export type { ReflectionSignal, AutoReflection } from './core/auto-reflector.js';
+export type { FactChange } from './core/fact-change-tracker.js';
+export type { GraphNode, GraphEdge, ConnectedResult } from './core/memory-graph.js';
+export { runRecallEval, GOLDEN_RECALL_CORPUS } from './training/recall-eval.js';
+export type { RecallProbe, RecallEvalResult, GoldenEntry } from './training/recall-eval.js';
+export { sanitizeUserMessage, redactSecrets } from './core/input-sanitizer.js';
+export { FreshnessGuard, DEFAULT_FRESHNESS } from './core/freshness-guard.js';
+export { SourceVerifier } from './core/source-verifier.js';
+export { TimeAwareness, buoiOf } from './core/time-awareness.js';
+export type { NowContext } from './core/time-awareness.js';
+export type { VerifyAdvice, EntityKind } from './core/source-verifier.js';
+export type { FreshnessVerdict, FreshnessConfig, VolatileKind } from './core/freshness-guard.js';
+export type { SanitizeResult } from './core/input-sanitizer.js';
+export type { CritiqueResult, CritiqueOptions } from './core/relevance-critic.js';
 
 export interface AgentBrainPlugin {
   name: string;

@@ -11,6 +11,7 @@ exports.defaultConfig = {
     minMemoryConfidence: 0.4,
     enableReflection: true,
     enableEmotions: true,
+    enableExpression: true,
     enableSkillTracking: true,
     maintenanceInterval: 6, // every 6 heartbeats
     dbPath: './brain/agentbrain.db',
@@ -24,6 +25,11 @@ exports.defaultConfig = {
         model: 'Qwen3-4B',
         role: 'verifier-only',
         maxTokens: 256,
+    },
+    volatileTtlSeconds: {
+        price: 300, // 5 minutes — re-search prices older than this
+        market: 300,
+        balance: 900,
     },
 };
 //# sourceMappingURL=config.js.map

@@ -173,7 +173,7 @@
                                     "agentbrain_insights"
                                 ]
                   },
-    "version":  "0.10.0",
+    "version":  "0.16.3",
     "author":  "KLSGG",
     "repository":  "https://github.com/KLSGG/agentbrain",
     "license":  "MIT",

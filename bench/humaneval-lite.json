@@ -1,0 +1,50 @@
+[
+  {
+    "id": "he-1-sum_even",
+    "prompt": "Viết hàm Python `sum_even(nums)` trả về tổng các số CHẴN trong list nums. List rỗng trả về 0.",
+    "entry": "sum_even",
+    "tests": "assert sum_even([1,2,3,4])==6\nassert sum_even([])==0\nassert sum_even([1,3,5])==0\nassert sum_even([2,-4,7])==-2"
+  },
+  {
+    "id": "he-2-is_palindrome",
+    "prompt": "Viết hàm Python `is_palindrome(s)` trả về True nếu chuỗi s đọc xuôi ngược giống nhau, bỏ qua hoa/thường và khoảng trắng.",
+    "entry": "is_palindrome",
+    "tests": "assert is_palindrome('Aba')==True\nassert is_palindrome('race car')==True\nassert is_palindrome('hello')==False\nassert is_palindrome('')==True"
+  },
+  {
+    "id": "he-3-fizzbuzz_count",
+    "prompt": "Viết hàm Python `fizzbuzz_count(n)` đếm số lượng số từ 1 đến n (bao gồm n) chia hết cho CẢ 3 và 5.",
+    "entry": "fizzbuzz_count",
+    "tests": "assert fizzbuzz_count(15)==1\nassert fizzbuzz_count(30)==2\nassert fizzbuzz_count(14)==0\nassert fizzbuzz_count(0)==0"
+  },
+  {
+    "id": "he-4-second_largest",
+    "prompt": "Viết hàm Python `second_largest(nums)` trả về giá trị lớn thứ NHÌ (distinct) trong list. Nếu không tồn tại trả về None.",
+    "entry": "second_largest",
+    "tests": "assert second_largest([3,1,2])==2\nassert second_largest([5,5,5])==None\nassert second_largest([9,7])==7\nassert second_largest([1])==None"
+  },
+  {
+    "id": "he-5-merge_dicts_sum",
+    "prompt": "Viết hàm Python `merge_dicts_sum(a, b)` gộp 2 dict, key trùng thì CỘNG giá trị. Trả về dict mới.",
+    "entry": "merge_dicts_sum",
+    "tests": "assert merge_dicts_sum({'x':1},{'x':2,'y':3})=={'x':3,'y':3}\nassert merge_dicts_sum({},{'a':1})=={'a':1}\nassert merge_dicts_sum({'a':1},{})=={'a':1}"
+  },
+  {
+    "id": "he-6-flatten",
+    "prompt": "Viết hàm Python `flatten(lst)` làm phẳng list lồng nhau (nested) bất kỳ độ sâu thành 1 list phẳng, giữ nguyên thứ tự.",
+    "entry": "flatten",
+    "tests": "assert flatten([1,[2,[3,4]],5])==[1,2,3,4,5]\nassert flatten([])==[]\nassert flatten([[[1]]])==[1]\nassert flatten([1,2,3])==[1,2,3]"
+  },
+  {
+    "id": "he-7-valid_parens",
+    "prompt": "Viết hàm Python `valid_parens(s)` trả về True nếu chuỗi ngoặc s (chỉ gồm '()[]{}') cân bằng và đúng thứ tự lồng.",
+    "entry": "valid_parens",
+    "tests": "assert valid_parens('()[]{}')==True\nassert valid_parens('([{}])')==True\nassert valid_parens('(]')==False\nassert valid_parens('([)]')==False\nassert valid_parens('')==True"
+  },
+  {
+    "id": "he-8-word_freq_top",
+    "prompt": "Viết hàm Python `top_word(text)` trả về từ xuất hiện nhiều nhất (lowercase, tách theo khoảng trắng). Nếu hoà, trả về từ nhỏ nhất theo alphabet. Text rỗng trả về None.",
+    "entry": "top_word",
+    "tests": "assert top_word('a b a c')=='a'\nassert top_word('x y y x')=='x'\nassert top_word('')==None\nassert top_word('Hello hello world')=='hello'"
+  }
+]

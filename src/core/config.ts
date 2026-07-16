@@ -21,6 +21,9 @@ export interface BrainConfig {
   /** Enable emotional state tracking */
   enableEmotions: boolean;
 
+  /** Enable expressive delivery (kaomoji/tone/energy) so emotion shows in voice */
+  enableExpression?: boolean;
+
   /** Enable skill/habit detection */
   enableSkillTracking: boolean;
 
@@ -49,6 +52,14 @@ export interface BrainConfig {
     role: 'verifier-only';
     maxTokens: number;
   };
+
+  /** Freshness TTL (seconds) for volatile data. When a recalled price/market
+   *  memory is older than this, Aira is told to re-search instead of reusing it. */
+  volatileTtlSeconds?: {
+    price?: number;
+    market?: number;
+    balance?: number;
+  };
 }
 
 export const defaultConfig: BrainConfig = {
@@ -58,6 +69,7 @@ export const defaultConfig: BrainConfig = {
   minMemoryConfidence: 0.4,
   enableReflection: true,
   enableEmotions: true,
+  enableExpression: true,
   enableSkillTracking: true,
   maintenanceInterval: 6, // every 6 heartbeats
   dbPath: './brain/agentbrain.db',
@@ -71,5 +83,10 @@ export const defaultConfig: BrainConfig = {
     model: 'Qwen3-4B',
     role: 'verifier-only',
     maxTokens: 256,
+  },
+  volatileTtlSeconds: {
+    price: 300,   // 5 minutes — re-search prices older than this
+    market: 300,
+    balance: 900,
   },
 };

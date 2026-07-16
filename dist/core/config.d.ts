@@ -14,6 +14,8 @@ export interface BrainConfig {
     enableReflection: boolean;
     /** Enable emotional state tracking */
     enableEmotions: boolean;
+    /** Enable expressive delivery (kaomoji/tone/energy) so emotion shows in voice */
+    enableExpression?: boolean;
     /** Enable skill/habit detection */
     enableSkillTracking: boolean;
     /** How often to run maintenance (in heartbeats) */
@@ -36,6 +38,13 @@ export interface BrainConfig {
         model: string;
         role: 'verifier-only';
         maxTokens: number;
+    };
+    /** Freshness TTL (seconds) for volatile data. When a recalled price/market
+     *  memory is older than this, Aira is told to re-search instead of reusing it. */
+    volatileTtlSeconds?: {
+        price?: number;
+        market?: number;
+        balance?: number;
     };
 }
 export declare const defaultConfig: BrainConfig;

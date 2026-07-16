@@ -36,11 +36,35 @@ export interface InjectionContext {
         valence: number;
         arousal: number;
     };
+    /** Rich expression guidance so the felt emotion actually shows in Aira's voice. */
+    expressionContext?: string;
     lessonsContext?: string;
     styleDirectives?: string;
     suggestionsContext?: string;
     factsContext?: string;
+    /** Memory-graph bridge facts: knowledge connected across links (multi-hop). */
+    graphContext?: string;
+    /** Reminders that a fact changed (old → new) so Aira never quotes stale values. */
+    factChangeContext?: string;
+    /** Learned insights (đúc kết kinh nghiệm) surfaced automatically. */
+    insightsContext?: string;
+    /** Reminders of past mistakes + fixes relevant to this task. */
+    errorContext?: string;
+    /** Recent + relevant past conversation so Aira keeps context. */
+    convContext?: string;
+    /** Distilled knowledge retrieved by semantic search for this message. */
+    knowledgeContext?: string;
     reasoningWhisper?: string;
+    /** Search-first directive: force/encourage live web search before answering. */
+    searchDirective?: string;
+    /** Relevance-critic output: memory conflicts + weak-recall warnings. */
+    criticContext?: string;
+    /** Freshness guard: warns that recalled volatile (price/market) data is stale. */
+    freshnessContext?: string;
+    /** Source verifier: force identity + multi-source verification for named entities. */
+    verifyContext?: string;
+    /** Time awareness: current time/buổi/ngày/lễ + message-timing & gap inference. */
+    timeContext?: string;
 }
 export interface InjectionOptions {
     /** Maximum tokens budget (approximate, based on ~4 chars/token) */

@@ -15,6 +15,7 @@ import { defaultConfig } from '../src/core/config.js';
 import { join } from 'node:path';
 import { mkdtemp, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { cleanupDir } from './helpers/cleanup.js';
 
 const TEST_BRAIN_DIR = join(import.meta.dirname || '.', '../.test-brain-phase4');
 
@@ -431,7 +432,7 @@ describe('OpenClaw Plugin Integration', () => {
       expect(injected).toContain('Krouter API');
     } finally {
       await plugin.shutdown();
-      await rm(brainDir, { recursive: true, force: true });
+      await cleanupDir(brainDir);
     }
   });
 
@@ -489,7 +490,7 @@ describe('OpenClaw Plugin Integration', () => {
     } finally {
       await firstPlugin?.shutdown();
       await secondPlugin?.shutdown();
-      await rm(brainDir, { recursive: true, force: true });
+      await cleanupDir(brainDir);
     }
   });
 

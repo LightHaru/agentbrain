@@ -11,7 +11,19 @@ const BRAIN_REGIONS: BrainRegion[] = [
 ];
 
 export async function fetchBrainState(_brainPath: string = '../brain'): Promise<BrainState> {
-  // Mock data for now - in production this would read from brain files
+  // Try the LIVE exported brain state first (scripts/export-brain-state.mjs
+  // reads a real brain.db → public/brain-state.json). Fall back to mock so the
+  // dashboard still renders when no live export exists.
+  try {
+    const res = await fetch('/brain-state.json', { cache: 'no-store' });
+    if (res.ok) {
+      const live = await res.json();
+      if (live && live.memories && live.personality) return live as BrainState;
+    }
+  } catch {
+    // no live data — fall through to mock
+  }
+
   const mockState: BrainState = {
     timestamp: new Date().toISOString(),
     regions: BRAIN_REGIONS.map(r => ({

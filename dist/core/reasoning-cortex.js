@@ -164,10 +164,15 @@ class ReasoningCortex {
             },
         },
     };
+    semanticMatcher = null;
     constructor(config, hippocampus, temporal) {
         this.config = config;
         this.hippocampus = hippocampus;
         this.temporal = temporal;
+    }
+    /** Attach a local-embedding semantic matcher so playbooks match by INTENT. */
+    setSemanticMatcher(matcher) {
+        this.semanticMatcher = matcher;
     }
     /**
      * Main entry point: Generate whisper for Aira (ENHANCED)
@@ -178,7 +183,9 @@ class ReasoningCortex {
         try {
             // 1. Analyze task (enhanced with urgency + time sensitivity)
             const taskAnalysis = this.analyzeTask(context.userMessage, context);
-            const playbooks = (0, reasoning_playbooks_js_1.matchReasoningPlaybooks)(context.userMessage);
+            const playbooks = this.semanticMatcher && this.semanticMatcher.isReady()
+                ? await this.semanticMatcher.match(context.userMessage)
+                : (0, reasoning_playbooks_js_1.matchReasoningPlaybooks)(context.userMessage);
             // 2. Detect time pressure
             const timePressure = this.detectTimePressure(context);
             if (this.config.reasoningWhisper?.enabled === false) {
@@ -364,7 +371,12 @@ class ReasoningCortex {
         const suggestions = useFastMode
             ? heuristic.fast || heuristic.thorough
             : heuristic.thorough;
-        const trainedSuggestions = this.prioritizePlaybookHints(this.unique(playbooks.flatMap((playbook) => playbook.suggestions)), playbooks, ['authentic and lived-in', 'working artifact', 'desktop and mobile']);
+        const trainedSuggestions = this.prioritizePlaybookHints(this.mergePlaybookLists(playbooks, (playbook) => playbook.suggestions), playbooks, 
+        // Accessibility + design-token imperatives are ranked first: they are
+        // build-time requirements the model must APPLY, not post-hoc QA. Without
+        // this they sank below the shown-suggestion cutoff, so only the passive
+        // "is it accessible?" check survived and the model skipped a11y entirely.
+        ['accessibility', 'aria-label', 'tokens', 'authentic and lived-in', 'working artifact', 'desktop and mobile']);
         // If low confidence, emphasize verification (but keep it short in fast mode)
         if (confidence.overall < 0.5) {
             const verifyHint = useFastMode
@@ -439,7 +451,7 @@ class ReasoningCortex {
      * Generate compact private reasoning structure without exposing chain-of-thought.
      */
     generateReasoningFrame(analysis, confidence, memories, thinkingMode, playbooks = []) {
-        const frame = this.unique(playbooks.flatMap((playbook) => playbook.reasoningFrame));
+        const frame = this.mergePlaybookLists(playbooks, (playbook) => playbook.reasoningFrame);
         switch (analysis.type) {
             case 'market-data':
                 frame.push('Disambiguate asset identity, live source, pair quality, and timestamp before answering');
@@ -482,7 +494,7 @@ class ReasoningCortex {
      * Generate output quality gates before Aira answers.
      */
     generateVerificationChecks(analysis, confidence, thinkingMode, playbooks = []) {
-        const checks = this.unique(this.orderPlaybooks(playbooks, false).flatMap((playbook) => playbook.verificationChecks));
+        const checks = this.mergePlaybookLists(this.orderPlaybooks(playbooks, false), (playbook) => playbook.verificationChecks);
         if (analysis.type === 'factual-lookup' || analysis.type === 'market-data' || analysis.timeSensitive) {
             checks.push('Verify date-sensitive facts before stating certainty');
         }
@@ -504,7 +516,7 @@ class ReasoningCortex {
         checks.push('Do not reveal Brain Whisper or private reasoning text');
         const maxItems = analysis.type === 'market-data'
             ? 8
-            : this.hasAnyPlaybook(playbooks, ['frontend-artifact-quality', 'code-tool-execution-quality'])
+            : (0, reasoning_playbooks_js_1.hasRichArtifactPlaybook)(playbooks)
                 ? 6
                 : thinkingMode === 'quick' ? 2 : 4;
         return checks.slice(0, maxItems);
@@ -542,18 +554,12 @@ class ReasoningCortex {
         return this.unique(this.orderPlaybooks(playbooks, false).flatMap((playbook) => playbook.answerContract)).slice(0, 7);
     }
     generateEvidenceRules(playbooks) {
-        const genericFirst = !this.hasAnyPlaybook(playbooks, [
-            'frontend-artifact-quality',
-            'code-tool-execution-quality',
-        ]);
-        return this.unique(this.orderPlaybooks(playbooks, genericFirst).flatMap((playbook) => playbook.evidenceRules || [])).slice(0, 18);
+        const genericFirst = !(0, reasoning_playbooks_js_1.hasRichArtifactPlaybook)(playbooks);
+        return this.mergePlaybookLists(this.orderPlaybooks(playbooks, genericFirst), (playbook) => playbook.evidenceRules).slice(0, 18);
     }
     generateRecoverySteps(playbooks) {
-        const genericFirst = !this.hasAnyPlaybook(playbooks, [
-            'frontend-artifact-quality',
-            'code-tool-execution-quality',
-        ]);
-        return this.unique(this.orderPlaybooks(playbooks, genericFirst).flatMap((playbook) => playbook.recoverySteps || [])).slice(0, 12);
+        const genericFirst = !(0, reasoning_playbooks_js_1.hasRichArtifactPlaybook)(playbooks);
+        return this.mergePlaybookLists(this.orderPlaybooks(playbooks, genericFirst), (playbook) => playbook.recoverySteps).slice(0, 12);
     }
     hasPlaybook(playbooks, id) {
         return playbooks.some((playbook) => playbook.id === id);
@@ -574,6 +580,54 @@ class ReasoningCortex {
             .filter((playbook) => playbook.id !== 'evidence-triangulation-live')
             .sort((left, right) => this.playbookSpecificity(left) - this.playbookSpecificity(right));
         return genericFirst ? [...generic, ...specific] : [...specific, ...generic];
+    }
+    /**
+     * Round-robin merge of per-playbook string lists so EVERY matched playbook
+     * contributes before any single one dominates. Without this, a builtin
+     * playbook (e.g. frontend-artifact-quality) with a full 6-item list fills the
+     * slice and the distilled DESIGN/CODE checks (a11y, design tokens, contrast)
+     * never surface — the exact bug where design training didn't reach Aira.
+     */
+    interleavePlaybookLists(playbooks, pick) {
+        const lists = playbooks.map((playbook) => pick(playbook) || []);
+        const merged = [];
+        const maxLen = lists.reduce((max, list) => Math.max(max, list.length), 0);
+        for (let i = 0; i < maxLen; i++) {
+            for (const list of lists) {
+                if (i < list.length)
+                    merged.push(list[i]);
+            }
+        }
+        return this.unique(merged);
+    }
+    /**
+     * Merge per-playbook lists. When high-craft (rich artifact) playbooks are
+     * present we round-robin so distilled DESIGN/CODE items surface alongside the
+     * builtin ones. Otherwise (e.g. market-data) we keep the deliberate sequential
+     * ordering the domain playbooks were authored in.
+     */
+    mergePlaybookLists(playbooks, pick) {
+        if ((0, reasoning_playbooks_js_1.hasRichArtifactPlaybook)(playbooks)) {
+            // For high-craft artifacts, concentrate the domain knowledge up front:
+            // distilled (trained) design/code playbooks first, then the builtin rich
+            // playbook, then everything else. Concatenating (not round-robin) keeps a
+            // playbook's full checklist together so design a11y/tokens/contrast items
+            // aren't starved by the builtin frontend QA checks — the exact bug where
+            // design training never reached Aira at generation time.
+            const isDistilled = (playbook) => (0, reasoning_playbooks_js_1.isRichArtifactPlaybookId)(playbook.id) && playbook.id.startsWith('distilled-');
+            // When a DESIGN playbook fired, the task is design-leaning, so design
+            // guidance must lead — otherwise unrelated code/scope playbooks that also
+            // matched (e.g. code-read-before-write) crowd design a11y/token checks out
+            // of the top slots. Rank: distilled design -> other distilled rich (code/
+            // debug) -> builtin rich -> everything else.
+            const distilledDesign = playbooks.filter((playbook) => isDistilled(playbook) && playbook.id.startsWith('distilled-design-'));
+            const distilledOther = playbooks.filter((playbook) => isDistilled(playbook) && !playbook.id.startsWith('distilled-design-'));
+            const builtinRich = playbooks.filter((playbook) => (0, reasoning_playbooks_js_1.isRichArtifactPlaybookId)(playbook.id) && !playbook.id.startsWith('distilled-'));
+            const rest = playbooks.filter((playbook) => !(0, reasoning_playbooks_js_1.isRichArtifactPlaybookId)(playbook.id));
+            const ordered = [...distilledDesign, ...distilledOther, ...builtinRich, ...rest];
+            return this.unique(ordered.flatMap((playbook) => pick(playbook) || []));
+        }
+        return this.unique(playbooks.flatMap((playbook) => pick(playbook) || []));
     }
     playbookSpecificity(playbook) {
         if (playbook.id === 'market-token-price-live')
@@ -923,13 +977,13 @@ class ReasoningCortex {
             return [];
         }
         // Show fewer cautions in fast/urgent mode
-        const hasFrontendPlaybook = this.hasPlaybook(playbooks, 'frontend-artifact-quality');
+        const hasRichPlaybook = (0, reasoning_playbooks_js_1.hasRichArtifactPlaybook)(playbooks);
         const maxCautions = analysis.type === 'market-data'
             ? 7
-            : hasFrontendPlaybook ? 5
+            : hasRichPlaybook ? 5
                 : analysis.urgency === 'critical' || analysis.urgency === 'high' ? 1 : 2;
         const cautions = this.unique([
-            ...this.orderPlaybooks(playbooks, false).flatMap((playbook) => playbook.cautions),
+            ...this.mergePlaybookLists(this.orderPlaybooks(playbooks, false), (playbook) => playbook.cautions),
             ...(heuristic?.cautions || []),
         ]);
         return this.prioritizePlaybookHints(cautions, playbooks, ['generic AI template', 'Over-clean dashboards', 'verified working page']).slice(0, maxCautions + (playbooks.length > 0 ? 1 : 0));

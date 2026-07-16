@@ -1,0 +1,14 @@
+[
+  {
+    "id": "dg-1-pricing",
+    "prompt": "Viết cho anh 1 file HTML hoàn chỉnh (có CSS trong <style>) cho 1 pricing section 3 gói (Starter/Pro/Enterprise) cho SaaS. Yêu cầu nhìn được designer làm, KHÔNG nhìn như AI: có phân cấp rõ, gói Pro nổi bật, responsive, dùng biến CSS cho màu/spacing, có hover state. Trả về DUY NHẤT code trong 1 block ```html```."
+  },
+  {
+    "id": "dg-2-dashboard-card",
+    "prompt": "Viết 1 file HTML hoàn chỉnh (CSS trong <style>) cho 1 dashboard card hiển thị 1 metric (doanh thu) kèm % thay đổi và 1 sparkline giả lập bằng div/SVG. Yêu cầu: dùng CSS variables cho design tokens, có dark mode qua prefers-color-scheme, responsive, focus-visible cho phần tương tác. Trả về DUY NHẤT 1 block ```html```."
+  },
+  {
+    "id": "dg-3-hero",
+    "prompt": "Viết 1 file HTML hoàn chỉnh (CSS trong <style>) cho hero section 1 landing page cho app tài chính cá nhân tên 'Vela'. Tránh mọi dấu hiệu AI: đừng dùng gradient tím-xanh chung chung, đừng emoji làm icon, đừng lorem ipsum. Có heading phân cấp, CTA rõ, responsive, type scale hợp lý. Trả về DUY NHẤT 1 block ```html```."
+  }
+]

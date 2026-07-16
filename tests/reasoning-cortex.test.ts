@@ -4,6 +4,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { ReasoningCortex } from '../src/core/reasoning-cortex.js';
+import {
+  registerLearnedPlaybook,
+  clearLearnedPlaybooks,
+  type ReasoningPlaybook,
+} from '../src/core/reasoning-playbooks.js';
 import { formatWhisper } from '../src/integration/brain-whisper-format.js';
 import { defaultConfig, type BrainConfig } from '../src/core/config.js';
 import type { Hippocampus } from '../src/core/hippocampus.js';
@@ -364,4 +369,47 @@ describe('ReasoningCortex', () => {
     expect(formatted).toContain('never reuse price, volume, change, or timestamp between IDs');
     expect(formatted).not.toContain('$0.4804');
   });
+
+  it('surfaces distilled DESIGN playbook checks (a11y/tokens) alongside the builtin frontend playbook', async () => {
+    // Regression guard: previously only the two builtin rich playbook IDs
+    // unlocked the 6-check output, so distilled design checks (a11y, tokens,
+    // contrast, hierarchy) were truncated and never reached Aira. A distilled
+    // design playbook that matches must contribute its domain checks.
+    const designPlaybook: ReasoningPlaybook = {
+      id: 'distilled-design-visual-system',
+      label: 'Design a visual system first',
+      matchAll: [/\b(thiet ke|thiết kế|design|giao dien|giao diện|landing|hero|ui)\b/i],
+      suggestions: ['Define a type scale, spacing rhythm, and one accent color'],
+      reasoningFrame: ['Visual system -> hierarchy -> tokens -> responsive -> a11y'],
+      verificationChecks: [
+        'Is there a defined type scale and consistent spacing rhythm (8px grid)?',
+        'Is there ONE clear focal point and a deliberate visual hierarchy?',
+        'Did I avoid default fonts, generic purple gradients, and emoji-as-icons?',
+        'Does the palette have intent (1 accent + neutrals), good contrast (WCAG AA)?',
+      ],
+      sourcePlan: [],
+      answerContract: [],
+      cautions: [],
+      uncertaintySignals: [],
+    };
+
+    try {
+      registerLearnedPlaybook(designPlaybook);
+      const cortex = createCortex();
+      const whisper = await cortex.generateWhisper({
+        userMessage: 'Thiết kế giao diện hero section cho landing page SaaS, đẹp chuyên nghiệp',
+      });
+
+      const checks = whisper.verificationChecks.join(' | ').toLowerCase();
+      // The distilled design playbook's domain checks must be present.
+      expect(checks).toContain('type scale');
+      expect(checks).toContain('focal point');
+      expect(checks).toMatch(/contrast|wcag/);
+      // And it should still qualify for the rich (6-check) output.
+      expect(whisper.verificationChecks.length).toBeGreaterThanOrEqual(4);
+    } finally {
+      clearLearnedPlaybooks();
+    }
+  });
+
 });

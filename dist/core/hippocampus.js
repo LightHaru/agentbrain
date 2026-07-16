@@ -14,6 +14,8 @@ exports.Hippocampus = void 0;
 const sql_adapter_js_1 = require("../storage/sql-adapter.js");
 const vector_memory_js_1 = require("./vector-memory.js");
 const query_analyzer_js_1 = require("./query-analyzer.js");
+const noise_filter_js_1 = require("./noise-filter.js");
+const forgetting_curve_js_1 = require("./forgetting-curve.js");
 class Hippocampus {
     config;
     fileManager;
@@ -41,6 +43,12 @@ class Hippocampus {
     async initialize() {
         this.memories = await this.fileManager.loadMemories();
         await this.vectorMemory.initialize();
+        // Self-heal on load: drop any telemetry/system noise persisted by older
+        // builds before indexing, so it never re-enters recall.
+        const purged = await this.purgeNoise();
+        if (purged > 0) {
+            console.log(`[Hippocampus] Self-heal on load: purged ${purged} noise memories`);
+        }
         // Index any unindexed memories
         const indexed = await this.vectorMemory.indexAll(this.memories);
         console.log(`[Hippocampus] Loaded ${this.memories.length} memories, indexed ${indexed} new vectors`);
@@ -106,6 +114,26 @@ class Hippocampus {
             candidates = this.memories;
         }
         return candidates;
+    }
+    /**
+     * Lightweight keyword scan over ALL memories, independent of vector ranking.
+     *
+     * Semantic recall can miss short volatile queries (e.g. "giá PRL giờ bao
+     * nhiêu?" collapses to a stopword-like concept), yet a stale price memory may
+     * still be in the store. The FreshnessGuard uses this to catch stale
+     * price/market data that ranked recall overlooked. Matches when a memory
+     * shares any query token (len > 1) OR any provided must-have term.
+     */
+    scanByTerms(terms) {
+        const clean = terms
+            .map(t => t.toLowerCase().trim())
+            .filter(t => t.length > 1);
+        if (clean.length === 0)
+            return [];
+        return this.memories.filter(m => {
+            const c = m.content.toLowerCase();
+            return clean.some(t => c.includes(t));
+        });
     }
     /**
      * Fallback keyword-based recall
@@ -191,9 +219,15 @@ class Hippocampus {
         const candidates = [];
         const msg = turn.message;
         const resp = turn.response;
+        // Drop turns whose user message is runtime/system telemetry rather than
+        // real conversation (model-metadata warnings, token/cost meters, etc.).
+        // A polluted second brain is worse than a small one.
+        if ((0, noise_filter_js_1.isSystemNoise)(msg)) {
+            return candidates;
+        }
         if (this.isLowValueMessage(msg)) {
             if (resp && /price|\$[\d.]+|hashrate|online|offline|balance|paid|lãi|lỗ/i.test(resp)) {
-                const keyLine = resp.split('\n').find(l => /\$[\d.]+|\d+.*TH\/s|PRL\/ngày/i.test(l));
+                const keyLine = resp.split('\n').find(l => /\$[\d.]+|\d+.*TH\/s|PRL\/ngày/i.test(l) && !(0, noise_filter_js_1.isSystemNoise)(l));
                 if (keyLine) {
                     candidates.push({
                         content: `[Finding] ${keyLine.slice(0, 200)}`,
@@ -244,8 +278,8 @@ class Hippocampus {
         }
         // Semantic: extract facts from agent response (key findings)
         if (resp && /giá.*\$|hashrate|online|offline|balance|paid|lãi|lỗ/i.test(resp)) {
-            // Extract the key finding line
-            const keyLine = resp.split('\n').find(l => /\$[\d.]+|\d+.*TH\/s|PRL\/ngày/i.test(l));
+            // Extract the key finding line (skip telemetry/system lines)
+            const keyLine = resp.split('\n').find(l => /\$[\d.]+|\d+.*TH\/s|PRL\/ngày/i.test(l) && !(0, noise_filter_js_1.isSystemNoise)(l));
             if (keyLine) {
                 candidates.push({
                     content: `[Finding] ${keyLine.slice(0, 200)}`,
@@ -283,26 +317,76 @@ class Hippocampus {
         if (this.heartbeatCount % this.config.maintenanceInterval !== 0) {
             return; // Only run every N heartbeats
         }
-        console.log('[Hippocampus] Running maintenance — decay + prune');
-        const now = new Date();
-        let pruned = 0;
-        this.memories = this.memories.filter(memory => {
-            // Apply decay based on time since last access
+        console.log('[Hippocampus] Running maintenance — self-heal + decay + prune');
+        // Self-heal: purge any telemetry/system noise that slipped in (legacy rows
+        // stored before the noise filter existed, or via other write paths).
+        const noisePurged = await this.purgeNoise();
+        const removedIds = [];
+        const kept = [];
+        for (const memory of this.memories) {
             const daysSinceAccess = this.daysSince(memory.lastAccessed);
-            const accessProtection = Math.min(0.8, memory.accessCount * 0.05);
-            const decay = daysSinceAccess * this.config.memoryDecayRate * (1 - accessProtection);
-            memory.confidence = Math.max(0, memory.confidence - decay);
-            // Prune if below threshold
-            if (memory.confidence < this.config.minMemoryConfidence) {
-                pruned++;
-                return false;
+            const retInput = {
+                ageDays: daysSinceAccess,
+                accessCount: memory.accessCount,
+                confidence: memory.confidence,
+            };
+            // Ebbinghaus forgetting curve: confidence fades exponentially with idle
+            // time, but well-used/high-confidence memories are far more stable
+            // (spaced-repetition intuition). This replaces the old flat linear decay.
+            memory.confidence = (0, forgetting_curve_js_1.decayedConfidence)(retInput);
+            // Forget (prune) when retention collapses OR confidence dips below the
+            // hard floor — unless the memory is actively used + trusted (protected).
+            const forget = (0, forgetting_curve_js_1.shouldForget)(retInput) || memory.confidence < this.config.minMemoryConfidence;
+            if (forget) {
+                removedIds.push(memory.id);
             }
-            return true;
-        });
-        if (pruned > 0) {
-            console.log(`[Hippocampus] Pruned ${pruned} low-confidence memories`);
+            else {
+                kept.push(memory);
+            }
+        }
+        this.memories = kept;
+        // Actually delete pruned memories from storage + vector index. Filtering
+        // the in-memory array alone left orphaned rows in the SQL store forever.
+        for (const id of removedIds) {
+            await this.fileManager.deleteMemory(id);
+            this.vectorMemory.removeMemory(id);
+        }
+        if (removedIds.length > 0) {
+            console.log(`[Hippocampus] Pruned ${removedIds.length} low-confidence memories`);
+        }
+        if (noisePurged > 0) {
+            console.log(`[Hippocampus] Purged ${noisePurged} noise memories`);
         }
         await this.persist();
+    }
+    /**
+     * Self-heal: remove any stored memory whose content is runtime/system noise.
+     * Runs on load and during maintenance so the second brain keeps only real
+     * memories even if noise was persisted by an older build or other write path.
+     * Returns the number of memories purged.
+     */
+    async purgeNoise() {
+        const noiseIds = [];
+        const clean = [];
+        for (const memory of this.memories) {
+            // Strip the [Finding]/[Technical]/... prefix before testing so the
+            // classifier sees the raw captured content.
+            const body = memory.content.replace(/^\[[^\]]+\]\s*/, '');
+            if ((0, noise_filter_js_1.isSystemNoise)(memory.content) || (0, noise_filter_js_1.isSystemNoise)(body)) {
+                noiseIds.push(memory.id);
+            }
+            else {
+                clean.push(memory);
+            }
+        }
+        if (noiseIds.length === 0)
+            return 0;
+        this.memories = clean;
+        for (const id of noiseIds) {
+            await this.fileManager.deleteMemory(id);
+            this.vectorMemory.removeMemory(id);
+        }
+        return noiseIds.length;
     }
     /**
      * Persist memories to brain files

@@ -6,10 +6,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Hippocampus } from '../src/core/hippocampus.js';
 import { BrainFileManager } from '../src/storage/md-writer.js';
 import { BrainDatabase } from '../src/storage/brain-db.js';
+import { SqlStorageAdapter } from '../src/storage/sql-adapter.js';
 import { defaultConfig } from '../src/core/config.js';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { cleanupDir } from './helpers/cleanup.js';
 
 describe('Hippocampus', () => {
   let hippocampus: Hippocampus;
@@ -84,6 +86,32 @@ describe('Hippocampus', () => {
         response: 'hihi',
         senderId: 'user1',
         senderName: 'Sếp',
+        timestamp: new Date().toISOString(),
+      });
+
+      const stats = hippocampus.getStats();
+      expect(stats.total).toBe(0);
+    });
+
+    it('does not store system telemetry as a memory (model metadata warning)', async () => {
+      await hippocampus.consolidate({
+        message: '⚠ Model metadata for `claude-opus-4-8` not found. Defaulting to fallback metadata',
+        response: 'ok',
+        senderId: 'user1',
+        senderName: 'User',
+        timestamp: new Date().toISOString(),
+      });
+
+      const stats = hippocampus.getStats();
+      expect(stats.total).toBe(0);
+    });
+
+    it('does not store token/cost telemetry as a finding', async () => {
+      await hippocampus.consolidate({
+        message: 'ok',
+        response: '🧮 Tokens: 61k in / 2.7k out · 💵 Cost: $0.0000',
+        senderId: 'user1',
+        senderName: 'User',
         timestamp: new Date().toISOString(),
       });
 
@@ -183,6 +211,70 @@ describe('Hippocampus', () => {
       // Memory should have decayed (possibly pruned if very old)
       const statsAfter = hippocampus.getStats();
       expect(statsAfter.total).toBeLessThanOrEqual(statsBefore.total);
+    });
+  });
+
+  describe('self-heal noise purge', () => {
+    it('purges pre-existing telemetry noise from a SQL brain on load', async () => {
+      const brainDir = await mkdtemp(join(tmpdir(), 'agentbrain-selfheal-'));
+      const config = { ...defaultConfig, brainDir };
+
+      // Seed the SQL store directly with noise + one real memory, simulating a
+      // brain populated by an older build without the noise filter.
+      const seedAdapter = new SqlStorageAdapter(brainDir);
+      const seedDb = seedAdapter.getDatabase();
+      seedDb.insertMemory({
+        id: 'noise-tokens',
+        type: 'semantic',
+        content: '[Finding] 🧮 Tokens: 61k in / 2.7k out · 💵 Cost: $0.0000',
+        timestamp: new Date().toISOString(),
+        confidence: 0.6,
+        tags: ['finding'],
+      });
+      seedDb.insertMemory({
+        id: 'noise-metadata',
+        type: 'procedural',
+        content: '[Technical] User: ⚠ Model metadata for `x` not found. Defaulting to fallback metadata',
+        timestamp: new Date().toISOString(),
+        confidence: 0.5,
+        tags: ['technical'],
+      });
+      seedDb.insertMemory({
+        id: 'real-pref',
+        type: 'semantic',
+        content: '[Fact] Sếp: Anh thích dùng Cursor hơn VSCode',
+        timestamp: new Date().toISOString(),
+        confidence: 0.7,
+        tags: ['preference'],
+      });
+      expect(seedDb.getAllMemories().length).toBe(3);
+
+      // A fresh Hippocampus over the same brain dir should self-heal on load.
+      const adapter = new SqlStorageAdapter(brainDir);
+      const healed = new Hippocampus(config, adapter);
+      await healed.initialize();
+
+      const remaining = adapter.getDatabase().getAllMemories();
+      const ids = remaining.map(r => r.id);
+      expect(ids).toContain('real-pref');
+      expect(ids).not.toContain('noise-tokens');
+      expect(ids).not.toContain('noise-metadata');
+
+      await cleanupDir(brainDir);
+    });
+
+    it('purgeNoise returns count and leaves clean memories intact', async () => {
+      await hippocampus.consolidate({
+        message: 'Anh thích code TypeScript hơn JavaScript',
+        response: 'Noted!',
+        senderId: 'user1',
+        senderName: 'Sếp',
+        timestamp: new Date().toISOString(),
+      });
+      const before = hippocampus.getStats().total;
+      const purged = await hippocampus.purgeNoise();
+      expect(purged).toBe(0);
+      expect(hippocampus.getStats().total).toBe(before);
     });
   });
 

@@ -321,6 +321,16 @@ class BrainDatabase {
     /**
      * Get currently valid facts (valid_until IS NULL)
      */
+    /**
+     * Canonical (pinned) facts the USER explicitly asserted as ground truth
+     * (source = 'user_canonical'). These are identity anchors — e.g. "the user's
+     * main project is Krouter" — that must ALWAYS be available so the agent never
+     * hallucinates or confuses them with noisy auto-extracted triples. Highest
+     * trust, never trimmed by relevance scoring.
+     */
+    getPinnedFacts() {
+        return this.db.prepare("SELECT * FROM facts WHERE valid_until IS NULL AND source = 'user_canonical' ORDER BY confidence DESC, timestamp DESC").all();
+    }
     getCurrentFacts(subject) {
         if (subject) {
             return this.db.prepare(`
@@ -337,6 +347,21 @@ class BrainDatabase {
     supersedeFact(oldFactId, newFactId, timestamp) {
         const now = timestamp || new Date().toISOString();
         this.db.prepare('UPDATE facts SET superseded_by = ?, valid_until = ? WHERE id = ?').run(newFactId, now, oldFactId);
+    }
+    /**
+     * Facts that were superseded (changed) within the last `sinceMs`, paired with
+     * the NEW fact that replaced them. Powers the "this fact changed" reminder so
+     * Aira knows a value was updated and never quotes the old one.
+     */
+    getRecentlySupersededFacts(sinceMs = 30 * 86400_000) {
+        const cutoff = new Date(Date.now() - sinceMs).toISOString();
+        const olds = this.db.prepare(`SELECT * FROM facts WHERE superseded_by IS NOT NULL AND (valid_until IS NULL OR valid_until >= ?) ORDER BY valid_until DESC`).all(cutoff);
+        return olds.map((o) => {
+            const current = o.superseded_by
+                ? this.db.prepare('SELECT * FROM facts WHERE id = ?').get(o.superseded_by) || null
+                : null;
+            return { old: o, current };
+        });
     }
     // ==========================================================================
     // Entities

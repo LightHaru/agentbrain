@@ -77,6 +77,15 @@ export class BrainFileManager {
   }
 
   /**
+   * Delete is handled implicitly for the markdown backend: memories are fully
+   * rewritten by writeMemoryFile, so a removed memory simply won't be written
+   * back. This no-op keeps the storage interface uniform with SqlStorageAdapter.
+   */
+  async deleteMemory(_id: string): Promise<void> {
+    // no-op: markdown files are rewritten wholesale on persist()
+  }
+
+  /**
    * Append to a brain file (for logs, reflections, etc.)
    */
   async appendToFile(subPath: string, content: string): Promise<void> {

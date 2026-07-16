@@ -25,6 +25,10 @@ export declare class SqlStorageAdapter {
     constructor(brainDir: string);
     getDatabase(): BrainDatabase;
     loadMemories(): Promise<Memory[]>;
+    /**
+     * Delete a memory permanently from the SQL store (and its FTS row via trigger).
+     */
+    deleteMemory(id: string): Promise<void>;
     writeMemoryFile(type: string, memories: Memory[]): Promise<void>;
     readFile(path: string): Promise<string | null>;
     writeFile(path: string, content: string): Promise<void>;

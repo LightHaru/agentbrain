@@ -1,4 +1,5 @@
 import type { BrainWhisper } from '../core/reasoning-cortex.js';
+import { isRichArtifactPlaybookId } from '../core/reasoning-playbooks.js';
 
 /**
  * Format Brain Whisper for private prompt injection.
@@ -38,8 +39,8 @@ export function formatWhisper(whisper: BrainWhisper): string {
   );
 
   const primaryFrame = whisper.reasoningFrame[0];
-  const frontendArtifact = whisper.playbookIds.includes('frontend-artifact-quality');
-  const suggestionLimit = frontendArtifact ? 2 : 1;
+  const frontendArtifact = whisper.playbookIds.some((id) => isRichArtifactPlaybookId(id));
+  const suggestionLimit = frontendArtifact ? 3 : 1;
   const primarySuggestions = whisper.suggestions.slice(0, suggestionLimit);
   if (primaryFrame) {
     lines.push(`Reasoning frame: ${primaryFrame}`);

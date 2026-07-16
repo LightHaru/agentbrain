@@ -48,6 +48,16 @@ export declare class Hippocampus {
      */
     private filterCandidates;
     /**
+     * Lightweight keyword scan over ALL memories, independent of vector ranking.
+     *
+     * Semantic recall can miss short volatile queries (e.g. "giá PRL giờ bao
+     * nhiêu?" collapses to a stopword-like concept), yet a stale price memory may
+     * still be in the store. The FreshnessGuard uses this to catch stale
+     * price/market data that ranked recall overlooked. Matches when a memory
+     * shares any query token (len > 1) OR any provided must-have term.
+     */
+    scanByTerms(terms: string[]): Memory[];
+    /**
      * Fallback keyword-based recall
      */
     private keywordRecall;
@@ -63,6 +73,13 @@ export declare class Hippocampus {
      * Periodic maintenance: decay old memories, prune low-confidence ones
      */
     maintenance(): Promise<void>;
+    /**
+     * Self-heal: remove any stored memory whose content is runtime/system noise.
+     * Runs on load and during maintenance so the second brain keeps only real
+     * memories even if noise was persisted by an older build or other write path.
+     * Returns the number of memories purged.
+     */
+    purgeNoise(): Promise<number>;
     /**
      * Persist memories to brain files
      */

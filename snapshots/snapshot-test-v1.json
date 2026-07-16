@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "timestamp": "2026-05-27T06:03:44.579Z",
-  "brainDir": "/home/aira/.openclaw/workspace/projects/agentbrain/.test-brain-phase6",
+  "timestamp": "2026-07-16T21:49:49.884Z",
+  "brainDir": "C:\\Users\\ADMIN\\projects\\agentbrain\\.test-brain-phase6",
   "files": {
     "emotional/state.md": "# State\n- Mood: content\n",
     "memory/episodic.md": "# Episodic\nid: mem-1\ncontent: test memory\n",

@@ -16,6 +16,7 @@
 import { BrainConfig } from './config.js';
 import { Hippocampus } from './hippocampus.js';
 import { TemporalLobe } from './temporal.js';
+import type { SemanticPlaybookMatcher } from './semantic-playbook-matcher.js';
 export type TaskType = 'factual-lookup' | 'market-data' | 'creative' | 'planning' | 'troubleshooting' | 'casual' | 'unknown';
 export type Complexity = 'simple' | 'medium' | 'complex';
 export type Urgency = 'low' | 'normal' | 'high' | 'critical';
@@ -110,7 +111,10 @@ export declare class ReasoningCortex {
     private maxOutcomeHistory;
     /** Heuristics library for different task types (ENHANCED) */
     private readonly HEURISTICS;
+    private semanticMatcher;
     constructor(config: BrainConfig, hippocampus: Hippocampus, temporal: TemporalLobe);
+    /** Attach a local-embedding semantic matcher so playbooks match by INTENT. */
+    setSemanticMatcher(matcher: SemanticPlaybookMatcher | null): void;
     /**
      * Main entry point: Generate whisper for Aira (ENHANCED)
      */
@@ -160,6 +164,21 @@ export declare class ReasoningCortex {
     private hasAnyPlaybook;
     private prioritizePlaybookHints;
     private orderPlaybooks;
+    /**
+     * Round-robin merge of per-playbook string lists so EVERY matched playbook
+     * contributes before any single one dominates. Without this, a builtin
+     * playbook (e.g. frontend-artifact-quality) with a full 6-item list fills the
+     * slice and the distilled DESIGN/CODE checks (a11y, design tokens, contrast)
+     * never surface — the exact bug where design training didn't reach Aira.
+     */
+    private interleavePlaybookLists;
+    /**
+     * Merge per-playbook lists. When high-craft (rich artifact) playbooks are
+     * present we round-robin so distilled DESIGN/CODE items surface alongside the
+     * builtin ones. Otherwise (e.g. market-data) we keep the deliberate sequential
+     * ordering the domain playbooks were authored in.
+     */
+    private mergePlaybookLists;
     private playbookSpecificity;
     private unique;
     /**

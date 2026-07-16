@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createBrainEngine = createBrainEngine;
 /**
- * AgentBrain Engine — agent-neutral SDK facade (v0.7.0)
+ * AgentBrain Engine â€” agent-neutral SDK facade (v0.7.0)
  *
  * The OpenClaw plugin (src/plugin/entry.ts) wires the brain into one specific
  * host. This module exposes the SAME cognitive core as a clean, importable
@@ -17,7 +17,7 @@ exports.createBrainEngine = createBrainEngine;
  * Design goals (addressing the v0.6.0 audit findings):
  *  - One entrypoint owns orchestration; the caller never wires modules by hand.
  *  - Storage and the clock are injectable adapters (default: in-memory + Date.now).
- *  - processTurn() returns a typed, cloned snapshot — no live internal references.
+ *  - processTurn() returns a typed, cloned snapshot â€” no live internal references.
  */
 const config_js_1 = require("./core/config.js");
 const memory_storage_js_1 = require("./storage/memory-storage.js");
@@ -38,9 +38,14 @@ const ALL_MODULES = [
 ];
 /**
  * Create a fully-wired, agent-neutral brain engine.
- * Every module is instantiated and connected internally — the caller just
+ * Every module is instantiated and connected internally â€” the caller just
  * calls init() then processTurn().
  */
+const memory_reviewer_js_1 = require("./core/memory-reviewer.js");
+const outcome_tracker_js_1 = require("./core/outcome-tracker.js");
+const review_scheduler_js_1 = require("./core/review-scheduler.js");
+const feedback_analyzer_js_1 = require("./core/feedback-analyzer.js");
+const lesson_learner_js_1 = require("./core/lesson-learner.js");
 function createBrainEngine(options = {}) {
     const config = { ...config_js_1.defaultConfig, ...(options.config ?? {}) };
     const clock = options.clock ?? (() => Date.now());
@@ -58,6 +63,19 @@ function createBrainEngine(options = {}) {
     const globalWorkspace = new global_workspace_js_1.GlobalWorkspace();
     const theoryOfMind = new theory_of_mind_js_1.TheoryOfMind();
     const affect = new affect_core_js_1.AffectCore();
+    // Learning system modules
+    const feedbackAnalyzer = new feedback_analyzer_js_1.FeedbackAnalyzer();
+    const lessonLearner = new lesson_learner_js_1.LessonLearner();
+    const memoryReviewer = new memory_reviewer_js_1.MemoryReviewer(hippocampus, config);
+    const outcomeTracker = new outcome_tracker_js_1.OutcomeTracker(hippocampus, lessonLearner, feedbackAnalyzer, config);
+    let reviewScheduler = null;
+    if (options.enableMemoryReview !== false) {
+        const scheduleConfig = {
+            ...(0, review_scheduler_js_1.createDefaultScheduleConfig)(),
+            ...options.reviewScheduleConfig,
+        };
+        reviewScheduler = new review_scheduler_js_1.ReviewScheduler(memoryReviewer, hippocampus, scheduleConfig);
+    }
     for (const id of ALL_MODULES)
         corpusCallosum.register(id);
     let initialized = false;
@@ -66,7 +84,7 @@ function createBrainEngine(options = {}) {
         return s === 'none' ? null : s;
     }
     const engine = {
-        version: '0.7.0',
+        version: '0.10.0',
         storage,
         async init() {
             if (initialized)
@@ -76,6 +94,41 @@ function createBrainEngine(options = {}) {
             await amygdala.initialize?.();
             await hippocampus.initialize();
             initialized = true;
+            if (reviewScheduler) {
+                reviewScheduler.start();
+            }
+        },
+        async reviewMemories(scope) {
+            return await memoryReviewer.runReviewCycle({
+                type: scope?.type || 'recent',
+                trigger: scope?.trigger || 'manual',
+                timeWindow: scope?.timeWindow,
+                topic: scope?.topic,
+            });
+        },
+        getOutcomeStats() {
+            return outcomeTracker.getStatistics();
+        },
+        getReviewStats() {
+            return memoryReviewer.getStatistics();
+        },
+        getSchedulerStatus() {
+            return reviewScheduler?.getStatus() || null;
+        },
+        getStrategyWeights() {
+            return outcomeTracker.getAllStrategyWeights();
+        },
+        getInsights(limit) {
+            return memoryReviewer.getInsights(limit);
+        },
+        getMetaLearnings() {
+            return outcomeTracker.getMetaLearnings();
+        },
+        async shutdown() {
+            if (reviewScheduler) {
+                reviewScheduler.stop();
+            }
+            await hippocampus.shutdown();
         },
         async processTurn(input) {
             if (!initialized)
@@ -131,7 +184,7 @@ function createBrainEngine(options = {}) {
             const neuroSignal = neurochem.describe();
             const focus = globalWorkspace.getState().currentFocus;
             // 9. AffectCore: generate a discrete emotion by appraising the situation
-            //    against the agent's goals, agency, coping and novelty — not keywords.
+            //    against the agent's goals, agency, coping and novelty â€” not keywords.
             const hypo = hypothalamus.getState();
             const sev = amy.threat.severity;
             const threatWeight = sev === 'critical' ? 1 : sev === 'high' ? 0.75 : sev === 'medium' ? 0.5 : sev === 'low' ? 0.3 : 0;

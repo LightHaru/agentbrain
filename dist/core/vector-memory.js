@@ -255,9 +255,12 @@ class VectorMemory {
                 source = 'tfidf';
             }
         }
-        if (vec) {
+        // Vector-space discipline: only store NEURAL-model vectors of the expected
+        // dimension. TF-IDF/other-dim vectors are kept in-memory for this session's
+        // fallback but never persisted into the shared index (mixing dims/models in
+        // one index makes cosine meaningless — the bug this guards against).
+        if (vec && source === 'transformers' && vec.length === this.embeddingEngine.getDims()) {
             this.memoryEmbeddings.set(memory.id, vec);
-            // Persist to DB
             if (this.db) {
                 const stmt = this.db.prepare(`
           INSERT OR REPLACE INTO memory_vectors (id, content, type, embedding, embedding_source, created_at, updated_at)
@@ -265,6 +268,10 @@ class VectorMemory {
         `);
                 stmt.run(memory.id, memory.content, memory.type, Buffer.from(vec.buffer), source, memory.timestamp, new Date().toISOString());
             }
+        }
+        else if (vec) {
+            // keep for in-session fallback only, not persisted
+            this.memoryEmbeddings.set(memory.id, vec);
         }
     }
     /**
@@ -294,9 +301,8 @@ class VectorMemory {
                 vec = this.embedder.embed(memory.content);
                 source = 'tfidf';
             }
-            if (vec) {
+            if (vec && source === 'transformers' && vec.length === this.embeddingEngine.getDims()) {
                 this.memoryEmbeddings.set(memory.id, vec);
-                // Persist to DB
                 if (this.db) {
                     const stmt = this.db.prepare(`
             INSERT OR REPLACE INTO memory_vectors (id, content, type, embedding, embedding_source, created_at, updated_at)
@@ -305,6 +311,10 @@ class VectorMemory {
                     stmt.run(memory.id, memory.content, memory.type, Buffer.from(vec.buffer), source, memory.timestamp, new Date().toISOString());
                 }
                 indexed++;
+            }
+            else if (vec) {
+                // non-neural / wrong-dim: in-session fallback only, not persisted
+                this.memoryEmbeddings.set(memory.id, vec);
             }
         }
         return indexed;

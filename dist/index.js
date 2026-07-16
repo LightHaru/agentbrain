@@ -6,8 +6,42 @@
  * all brain modules (Thalamus, Hippocampus, Prefrontal, Amygdala,
  * Cerebellum, Basal Ganglia, Anterior Cingulate).
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.plugin = exports.ContextInjector = exports.PriorityEnforcer = exports.createOpenClawPlugin = exports.defaultConfig = exports.MemoryStorage = exports.BrainFileManager = exports.createBrainEngine = exports.AffectCore = exports.Neurochemistry = exports.TheoryOfMind = exports.GlobalWorkspace = exports.CorpusCallosum = exports.Brainstem = exports.Hypothalamus = exports.Metacognition = exports.WorkingMemory = exports.Insula = exports.ParietalLobe = exports.TemporalLobe = exports.PrefrontalCortex = exports.BasalGanglia = exports.Cerebellum = exports.AnteriorCingulate = exports.Amygdala = exports.Hippocampus = exports.Thalamus = void 0;
+exports.ForgettingCurve = exports.FactChangeTracker = exports.MemoryGraph = exports.RelevanceCritic = exports.SearchAdvisor = exports.ContextInjector = exports.PriorityEnforcer = exports.createOpenClawPlugin = exports.clearLearnedPlaybooks = exports.countPlaybooks = exports.getLearnedPlaybooks = exports.registerLearnedPlaybook = exports.DEFAULT_PROBES = exports.runBenchmark = exports.OPUS_DISTILLATION = exports.DistillationTrainer = exports.SemanticPlaybookMatcher = exports.ErrorLedger = exports.ConversationLog = exports.KnowledgeStore = exports.SelfDistiller = exports.EMBED_DIM = exports.EMBED_MODEL_ID = exports.cosineSim = exports.l2normalize = exports.getEmbeddingService = exports.EmbeddingService = exports.defaultConfig = exports.MemoryStorage = exports.BrainFileManager = exports.createBrainEngine = exports.AffectCore = exports.Neurochemistry = exports.TheoryOfMind = exports.GlobalWorkspace = exports.CorpusCallosum = exports.Brainstem = exports.Hypothalamus = exports.Metacognition = exports.WorkingMemory = exports.Insula = exports.ParietalLobe = exports.TemporalLobe = exports.PrefrontalCortex = exports.BasalGanglia = exports.Cerebellum = exports.AnteriorCingulate = exports.Amygdala = exports.Hippocampus = exports.Thalamus = void 0;
+exports.plugin = exports.buoiOf = exports.TimeAwareness = exports.SourceVerifier = exports.DEFAULT_FRESHNESS = exports.FreshnessGuard = exports.redactSecrets = exports.sanitizeUserMessage = exports.GOLDEN_RECALL_CORPUS = exports.runRecallEval = exports.AutoReflector = void 0;
 exports.createAgentBrain = createAgentBrain;
 const thalamus_js_1 = require("./core/thalamus.js");
 const hippocampus_js_1 = require("./core/hippocampus.js");
@@ -71,6 +105,40 @@ var memory_storage_js_1 = require("./storage/memory-storage.js");
 Object.defineProperty(exports, "MemoryStorage", { enumerable: true, get: function () { return memory_storage_js_1.MemoryStorage; } });
 var config_js_2 = require("./core/config.js");
 Object.defineProperty(exports, "defaultConfig", { enumerable: true, get: function () { return config_js_2.defaultConfig; } });
+// Unified embedding service (v0.14.0) — store vectors "like people do"
+var embedding_service_js_1 = require("./core/embedding-service.js");
+Object.defineProperty(exports, "EmbeddingService", { enumerable: true, get: function () { return embedding_service_js_1.EmbeddingService; } });
+Object.defineProperty(exports, "getEmbeddingService", { enumerable: true, get: function () { return embedding_service_js_1.getEmbeddingService; } });
+Object.defineProperty(exports, "l2normalize", { enumerable: true, get: function () { return embedding_service_js_1.l2normalize; } });
+Object.defineProperty(exports, "cosineSim", { enumerable: true, get: function () { return embedding_service_js_1.cosineSim; } });
+Object.defineProperty(exports, "EMBED_MODEL_ID", { enumerable: true, get: function () { return embedding_service_js_1.EMBED_MODEL_ID; } });
+Object.defineProperty(exports, "EMBED_DIM", { enumerable: true, get: function () { return embedding_service_js_1.EMBED_DIM; } });
+// Self-distillation (v0.15.0) — learn from own successful conversations
+var self_distiller_js_1 = require("./training/self-distiller.js");
+Object.defineProperty(exports, "SelfDistiller", { enumerable: true, get: function () { return self_distiller_js_1.SelfDistiller; } });
+// Knowledge storage + conversation memory (v0.14.0)
+var knowledge_store_js_1 = require("./core/knowledge-store.js");
+Object.defineProperty(exports, "KnowledgeStore", { enumerable: true, get: function () { return knowledge_store_js_1.KnowledgeStore; } });
+var conversation_log_js_1 = require("./core/conversation-log.js");
+Object.defineProperty(exports, "ConversationLog", { enumerable: true, get: function () { return conversation_log_js_1.ConversationLog; } });
+// Learning-over-time modules (v0.13.0)
+var error_ledger_js_1 = require("./core/error-ledger.js");
+Object.defineProperty(exports, "ErrorLedger", { enumerable: true, get: function () { return error_ledger_js_1.ErrorLedger; } });
+var semantic_playbook_matcher_js_1 = require("./core/semantic-playbook-matcher.js");
+Object.defineProperty(exports, "SemanticPlaybookMatcher", { enumerable: true, get: function () { return semantic_playbook_matcher_js_1.SemanticPlaybookMatcher; } });
+// Training / distillation (v0.13.0)
+var distillation_trainer_js_1 = require("./training/distillation-trainer.js");
+Object.defineProperty(exports, "DistillationTrainer", { enumerable: true, get: function () { return distillation_trainer_js_1.DistillationTrainer; } });
+var distillation_corpus_js_1 = require("./training/distillation-corpus.js");
+Object.defineProperty(exports, "OPUS_DISTILLATION", { enumerable: true, get: function () { return distillation_corpus_js_1.OPUS_DISTILLATION; } });
+var benchmark_js_1 = require("./training/benchmark.js");
+Object.defineProperty(exports, "runBenchmark", { enumerable: true, get: function () { return benchmark_js_1.runBenchmark; } });
+Object.defineProperty(exports, "DEFAULT_PROBES", { enumerable: true, get: function () { return benchmark_js_1.DEFAULT_PROBES; } });
+var reasoning_playbooks_js_1 = require("./core/reasoning-playbooks.js");
+Object.defineProperty(exports, "registerLearnedPlaybook", { enumerable: true, get: function () { return reasoning_playbooks_js_1.registerLearnedPlaybook; } });
+Object.defineProperty(exports, "getLearnedPlaybooks", { enumerable: true, get: function () { return reasoning_playbooks_js_1.getLearnedPlaybooks; } });
+Object.defineProperty(exports, "countPlaybooks", { enumerable: true, get: function () { return reasoning_playbooks_js_1.countPlaybooks; } });
+Object.defineProperty(exports, "clearLearnedPlaybooks", { enumerable: true, get: function () { return reasoning_playbooks_js_1.clearLearnedPlaybooks; } });
 // Integration
 var openclaw_plugin_js_1 = require("./integration/openclaw-plugin.js");
 Object.defineProperty(exports, "createOpenClawPlugin", { enumerable: true, get: function () { return openclaw_plugin_js_1.createOpenClawPlugin; } });
@@ -78,6 +146,32 @@ var priority_enforcer_js_1 = require("./integration/priority-enforcer.js");
 Object.defineProperty(exports, "PriorityEnforcer", { enumerable: true, get: function () { return priority_enforcer_js_1.PriorityEnforcer; } });
 var context_injector_js_1 = require("./integration/context-injector.js");
 Object.defineProperty(exports, "ContextInjector", { enumerable: true, get: function () { return context_injector_js_1.ContextInjector; } });
+// Adaptive-RAG upgrades (v0.15.2)
+var search_advisor_js_1 = require("./core/search-advisor.js");
+Object.defineProperty(exports, "SearchAdvisor", { enumerable: true, get: function () { return search_advisor_js_1.SearchAdvisor; } });
+var relevance_critic_js_1 = require("./core/relevance-critic.js");
+Object.defineProperty(exports, "RelevanceCritic", { enumerable: true, get: function () { return relevance_critic_js_1.RelevanceCritic; } });
+var memory_graph_js_1 = require("./core/memory-graph.js");
+Object.defineProperty(exports, "MemoryGraph", { enumerable: true, get: function () { return memory_graph_js_1.MemoryGraph; } });
+var fact_change_tracker_js_1 = require("./core/fact-change-tracker.js");
+Object.defineProperty(exports, "FactChangeTracker", { enumerable: true, get: function () { return fact_change_tracker_js_1.FactChangeTracker; } });
+exports.ForgettingCurve = __importStar(require("./core/forgetting-curve.js"));
+var auto_reflector_js_1 = require("./core/auto-reflector.js");
+Object.defineProperty(exports, "AutoReflector", { enumerable: true, get: function () { return auto_reflector_js_1.AutoReflector; } });
+var recall_eval_js_1 = require("./training/recall-eval.js");
+Object.defineProperty(exports, "runRecallEval", { enumerable: true, get: function () { return recall_eval_js_1.runRecallEval; } });
+Object.defineProperty(exports, "GOLDEN_RECALL_CORPUS", { enumerable: true, get: function () { return recall_eval_js_1.GOLDEN_RECALL_CORPUS; } });
+var input_sanitizer_js_1 = require("./core/input-sanitizer.js");
+Object.defineProperty(exports, "sanitizeUserMessage", { enumerable: true, get: function () { return input_sanitizer_js_1.sanitizeUserMessage; } });
+Object.defineProperty(exports, "redactSecrets", { enumerable: true, get: function () { return input_sanitizer_js_1.redactSecrets; } });
+var freshness_guard_js_1 = require("./core/freshness-guard.js");
+Object.defineProperty(exports, "FreshnessGuard", { enumerable: true, get: function () { return freshness_guard_js_1.FreshnessGuard; } });
+Object.defineProperty(exports, "DEFAULT_FRESHNESS", { enumerable: true, get: function () { return freshness_guard_js_1.DEFAULT_FRESHNESS; } });
+var source_verifier_js_1 = require("./core/source-verifier.js");
+Object.defineProperty(exports, "SourceVerifier", { enumerable: true, get: function () { return source_verifier_js_1.SourceVerifier; } });
+var time_awareness_js_1 = require("./core/time-awareness.js");
+Object.defineProperty(exports, "TimeAwareness", { enumerable: true, get: function () { return time_awareness_js_1.TimeAwareness; } });
+Object.defineProperty(exports, "buoiOf", { enumerable: true, get: function () { return time_awareness_js_1.buoiOf; } });
 /**
  * Create and initialize the AgentBrain plugin
  */

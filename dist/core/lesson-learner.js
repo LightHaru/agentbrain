@@ -151,6 +151,22 @@ class LessonLearner {
         this.lessons = lessons;
     }
     /**
+     * Add a single lesson without discarding existing ones. Used by the
+     * distillation trainer to inject teacher lessons. Idempotent on (trigger,right):
+     * a matching lesson is reinforced instead of duplicated.
+     */
+    addLesson(lesson) {
+        const existing = this.lessons.find((l) => l.trigger === lesson.trigger && l.right === lesson.right);
+        if (existing) {
+            existing.occurrences++;
+            existing.confidence = Math.min(1, existing.confidence + 0.05);
+            existing.lastApplied = lesson.lastApplied || existing.lastApplied;
+            return existing;
+        }
+        this.lessons.push(lesson);
+        return lesson;
+    }
+    /**
      * Get stats
      */
     getStats() {

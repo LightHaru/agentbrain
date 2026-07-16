@@ -160,8 +160,25 @@ export declare class BrainDatabase {
     /**
      * Get currently valid facts (valid_until IS NULL)
      */
+    /**
+     * Canonical (pinned) facts the USER explicitly asserted as ground truth
+     * (source = 'user_canonical'). These are identity anchors — e.g. "the user's
+     * main project is Krouter" — that must ALWAYS be available so the agent never
+     * hallucinates or confuses them with noisy auto-extracted triples. Highest
+     * trust, never trimmed by relevance scoring.
+     */
+    getPinnedFacts(): FactRow[];
     getCurrentFacts(subject?: string): FactRow[];
     supersedeFact(oldFactId: string, newFactId: string, timestamp?: string): void;
+    /**
+     * Facts that were superseded (changed) within the last `sinceMs`, paired with
+     * the NEW fact that replaced them. Powers the "this fact changed" reminder so
+     * Aira knows a value was updated and never quotes the old one.
+     */
+    getRecentlySupersededFacts(sinceMs?: number): Array<{
+        old: FactRow;
+        current: FactRow | null;
+    }>;
     upsertEntity(entity: {
         name: string;
         type: string;

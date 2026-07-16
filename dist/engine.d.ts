@@ -1,5 +1,5 @@
 /**
- * AgentBrain Engine — agent-neutral SDK facade (v0.7.0)
+ * AgentBrain Engine â€” agent-neutral SDK facade (v0.7.0)
  *
  * The OpenClaw plugin (src/plugin/entry.ts) wires the brain into one specific
  * host. This module exposes the SAME cognitive core as a clean, importable
@@ -14,7 +14,7 @@
  * Design goals (addressing the v0.6.0 audit findings):
  *  - One entrypoint owns orchestration; the caller never wires modules by hand.
  *  - Storage and the clock are injectable adapters (default: in-memory + Date.now).
- *  - processTurn() returns a typed, cloned snapshot — no live internal references.
+ *  - processTurn() returns a typed, cloned snapshot â€” no live internal references.
  */
 import { BrainConfig } from './core/config.js';
 import { BrainFileManager } from './storage/md-writer.js';
@@ -30,6 +30,9 @@ export interface BrainEngineOptions {
     clock?: Clock;
     /** IANA timezone for circadian/hypothalamus. Default Asia/Ho_Chi_Minh. */
     timezone?: string;
+    enableMemoryReview?: boolean;
+    reviewScheduleConfig?: Partial<ScheduleConfig>;
+    enableOutcomeTracking?: boolean;
 }
 export interface TurnInput {
     message: string;
@@ -92,12 +95,16 @@ export interface BrainEngine {
     getState(): Record<string, unknown>;
     /** Direct access to the storage adapter (e.g. MemoryStorage.dump()). */
     readonly storage: BrainFileManager;
+    reviewMemories(scope?: Partial<import('./core/memory-reviewer.js').ReviewScope>): Promise<import('./core/memory-reviewer.js').MemoryReviewCycle>;
+    getOutcomeStats(): import('./core/outcome-tracker.js').OutcomeStatistics;
+    getReviewStats(): ReturnType<import('./core/memory-reviewer.js').MemoryReviewer['getStatistics']>;
+    getSchedulerStatus(): ReturnType<import('./core/review-scheduler.js').ReviewScheduler['getStatus']> | null;
+    getStrategyWeights(): Map<string, number>;
+    getInsights(limit?: number): ReturnType<import('./core/memory-reviewer.js').MemoryReviewer['getInsights']>;
+    getMetaLearnings(): ReturnType<import('./core/outcome-tracker.js').OutcomeTracker['getMetaLearnings']>;
+    shutdown(): Promise<void>;
 }
-/**
- * Create a fully-wired, agent-neutral brain engine.
- * Every module is instantiated and connected internally — the caller just
- * calls init() then processTurn().
- */
+import { type ScheduleConfig } from './core/review-scheduler.js';
 export declare function createBrainEngine(options?: BrainEngineOptions): BrainEngine;
 export default createBrainEngine;
 //# sourceMappingURL=engine.d.ts.map

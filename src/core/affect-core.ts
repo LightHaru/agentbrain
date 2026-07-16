@@ -89,6 +89,14 @@ const PROTOTYPES: Record<EmotionLabel, EmotionVAD> = {
   neutral: { valence: 0, arousal: 0.3, dominance: 0.3 },
 };
 
+/** Minimal storage surface AffectCore needs to persist mood across sessions. */
+export interface AffectStore {
+  readFile(path: string): Promise<string | null>;
+  writeFile(path: string, content: string): Promise<void>;
+}
+
+const AFFECT_FILE = 'emotional/affect.md';
+
 export class AffectCore {
   private baselineValence = 0;
   private baselineArousal = 0.3;
@@ -98,6 +106,81 @@ export class AffectCore {
   private lastAppraisal: AppraisalInput | null = null;
   private lastTrigger = '';
   private recent: AffectState['recent'] = [];
+
+  // ── Mood momentum (emotional inertia) ──────────────────────────────────
+  // A felt mood persists across turns instead of resetting every message.
+  // Each new appraisal decays the lingering mood a little, then must be strong
+  // enough to actually dislodge it — otherwise the current mood holds. This is
+  // what makes praise-then-neutral stay warm rather than snapping to neutral.
+  /** how much of the current mood carries into the next turn (0..1). */
+  private moodInertia: number;
+  /** incoming emotion must reach this fraction of the lingering intensity to switch. */
+  private switchResistance: number;
+  private store: AffectStore | null;
+
+  constructor(store: AffectStore | null = null, opts: { moodInertia?: number; switchResistance?: number } = {}) {
+    this.store = store;
+    this.moodInertia = opts.moodInertia ?? 0.8;
+    this.switchResistance = opts.switchResistance ?? 0.7;
+  }
+
+  /** Load persisted mood so emotion survives restarts / new sessions. */
+  async initialize(): Promise<void> {
+    if (!this.store) return;
+    try {
+      const raw = await this.store.readFile(AFFECT_FILE);
+      if (raw) this.restore(raw);
+    } catch { /* best-effort: start fresh if unreadable */ }
+    console.log(
+      `[AffectCore] Initialized — mood: ${this.primary.label} (${this.primary.intensity.toFixed(2)}), ` +
+      `baselineV: ${this.baselineValence.toFixed(2)}`
+    );
+  }
+
+  /** Persist current mood + baseline so it carries into the next session. */
+  async persist(): Promise<void> {
+    if (!this.store) return;
+    try {
+      await this.store.writeFile(AFFECT_FILE, this.serialize());
+    } catch { /* best-effort */ }
+  }
+
+  serialize(): string {
+    return JSON.stringify({
+      v: 1,
+      baselineValence: this.baselineValence,
+      baselineArousal: this.baselineArousal,
+      primary: this.primary,
+      secondary: this.secondary,
+      dimensional: this.dimensional,
+      lastTrigger: this.lastTrigger,
+      recent: this.recent.slice(-30),
+      savedAt: Date.now(),
+    });
+  }
+
+  restore(raw: string): void {
+    const data = JSON.parse(raw);
+    if (typeof data.baselineValence === 'number') this.baselineValence = data.baselineValence;
+    if (typeof data.baselineArousal === 'number') this.baselineArousal = data.baselineArousal;
+    if (data.primary?.label && PROTOTYPES[data.primary.label as EmotionLabel]) {
+      this.primary = { label: data.primary.label, intensity: clamp01(data.primary.intensity ?? 0.3) };
+    }
+    if (data.secondary?.label && PROTOTYPES[data.secondary.label as EmotionLabel]) {
+      this.secondary = { label: data.secondary.label, intensity: clamp01(data.secondary.intensity ?? 0) };
+    } else {
+      this.secondary = null;
+    }
+    if (data.dimensional) {
+      this.dimensional = {
+        valence: clamp(data.dimensional.valence ?? 0, -1, 1),
+        arousal: clamp01(data.dimensional.arousal ?? 0.3),
+        dominance: clamp(data.dimensional.dominance ?? 0.3, -1, 1),
+      };
+    }
+    if (typeof data.lastTrigger === 'string') this.lastTrigger = data.lastTrigger;
+    if (Array.isArray(data.recent)) this.recent = data.recent.slice(-30);
+  }
 
   /**
    * Event-driven emotion generation. Returns the discrete emotion the agent
@@ -160,12 +243,66 @@ export class AffectCore {
     if (scored.length === 0) scored.push({ label: 'neutral', score: 0.3 });
     scored.sort((a, b) => b.score - a.score);
 
-    const primary: DiscreteEmotion = { label: scored[0].label, intensity: clamp01(scored[0].score) };
-    const secondary: DiscreteEmotion | null =
+    const incoming: DiscreteEmotion = { label: scored[0].label, intensity: clamp01(scored[0].score) };
+    const incomingSecondary: DiscreteEmotion | null =
       scored[1] && scored[1].score > 0.15 ? { label: scored[1].label, intensity: clamp01(scored[1].score) } : null;
 
+    // Apply mood momentum: the lingering mood resists being overwritten.
+    const { primary, secondary } = this.blendWithMomentum(incoming, incomingSecondary);
     this.applyEmotion(primary, secondary, trigger, input);
-    return primary;
+    return this.primary;
+  }
+
+  /**
+   * Emotional inertia. The current mood lingers and only yields when the new
+   * feeling is strong enough. Same emotion → reinforce (intensity climbs).
+   * Different emotion → the incoming must beat the decayed current mood to take
+   * over; if it can't, the current mood holds but is nudged toward the new one.
+   */
+  private blendWithMomentum(
+    incoming: DiscreteEmotion,
+    incomingSecondary: DiscreteEmotion | null
+  ): { primary: DiscreteEmotion; secondary: DiscreteEmotion | null } {
+    const cur = this.primary;
+
+    // A neutral/no-op appraisal never erases a real mood — it just lets it decay.
+    const incomingIsIdle = incoming.label === 'neutral' || incoming.intensity < 0.2;
+    const lingering = cur.intensity * this.moodInertia;
+
+    if (cur.label === 'neutral' || cur.intensity < 0.15) {
+      // No real mood currently → adopt the incoming emotion directly.
+      return { primary: incoming, secondary: incomingSecondary };
+    }
+
+    if (incoming.label === cur.label) {
+      // Same feeling reinforces and slowly intensifies (mood deepens).
+      const intensity = clamp01(Math.max(incoming.intensity, lingering) + incoming.intensity * 0.15);
+      return { primary: { label: cur.label, intensity }, secondary: incomingSecondary };
+    }
+
+    if (incomingIsIdle) {
+      // Neutral turn while in a mood → mood persists, just decays a little.
+      return {
+        primary: { label: cur.label, intensity: clamp01(lingering) },
+        secondary: this.secondary,
+      };
+    }
+
+    // Different real emotion → it must overcome the lingering mood to switch.
+    if (incoming.intensity >= lingering * this.switchResistance) {
+      // Strong enough: switch, but the old mood tints it as a secondary.
+      return {
+        primary: incoming,
+        secondary: incomingSecondary ?? { label: cur.label, intensity: clamp01(lingering * 0.5) },
+      };
+    }
+
+    // Not strong enough: current mood holds, nudged slightly by the newcomer.
+    const nudged = clamp01(lingering - incoming.intensity * 0.15);
+    return {
+      primary: { label: cur.label, intensity: nudged },
+      secondary: { label: incoming.label, intensity: clamp01(incoming.intensity * 0.5) },
+    };
   }
 
   /**

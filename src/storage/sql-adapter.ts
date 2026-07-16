@@ -56,6 +56,13 @@ export class SqlStorageAdapter {
     }));
   }
 
+  /**
+   * Delete a memory permanently from the SQL store (and its FTS row via trigger).
+   */
+  async deleteMemory(id: string): Promise<void> {
+    this.db.deleteMemory(id);
+  }
+
   async writeMemoryFile(type: string, memories: Memory[]): Promise<void> {
     // Batch insert/update — use transaction for speed
     this.db.transaction(() => {

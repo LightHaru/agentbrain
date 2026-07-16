@@ -59,6 +59,12 @@ export declare class LessonLearner {
      */
     loadLessons(lessons: Lesson[]): void;
     /**
+     * Add a single lesson without discarding existing ones. Used by the
+     * distillation trainer to inject teacher lessons. Idempotent on (trigger,right):
+     * a matching lesson is reinforced instead of duplicated.
+     */
+    addLesson(lesson: Lesson): Lesson;
+    /**
      * Get stats
      */
     getStats(): {

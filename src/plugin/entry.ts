@@ -33,6 +33,7 @@ import { CorpusCallosum } from '../core/corpus-callosum.js';
 import { GlobalWorkspace } from '../core/global-workspace.js';
 import { TheoryOfMind } from '../core/theory-of-mind.js';
 import { AffectCore } from '../core/affect-core.js';
+import { ExpressionEngine } from '../core/expression-engine.js';
 import { BrainFileManager } from '../storage/md-writer.js';
 import { SqlStorageAdapter } from '../storage/sql-adapter.js';
 import { PriorityEnforcer } from '../integration/priority-enforcer.js';
@@ -53,6 +54,23 @@ import { OutcomeTracker } from '../core/outcome-tracker.js';
 import { ReviewScheduler, createDefaultScheduleConfig } from '../core/review-scheduler.js';
 import { ReasoningCortex } from '../core/reasoning-cortex.js';
 import { formatWhisper, getInjectionBudget, inferFeedbackOutcome } from '../integration/brain-whisper-format.js';
+import { registerLearnedPlaybook, deserializePlaybook, countPlaybooks } from '../core/reasoning-playbooks.js';
+import { SemanticPlaybookMatcher } from '../core/semantic-playbook-matcher.js';
+import { getEmbeddingEngine } from '../core/embedding-engine.js';
+import { ErrorLedger } from '../core/error-ledger.js';
+import { KnowledgeStore } from '../core/knowledge-store.js';
+import { ConversationLog } from '../core/conversation-log.js';
+import { SearchAdvisor } from '../core/search-advisor.js';
+import { RelevanceCritic } from '../core/relevance-critic.js';
+import { sanitizeUserMessage, redactSecrets } from '../core/input-sanitizer.js';
+import { FreshnessGuard } from '../core/freshness-guard.js';
+import { SourceVerifier } from '../core/source-verifier.js';
+import { TimeAwareness } from '../core/time-awareness.js';
+import { SelfDistiller } from '../training/self-distiller.js';
+import { MemoryGraph } from '../core/memory-graph.js';
+import { FactChangeTracker } from '../core/fact-change-tracker.js';
+import { AutoReflector } from '../core/auto-reflector.js';
+import type { SerializedPlaybook } from '../core/reasoning-playbooks.js';
 
 // --- State ---
 let initialized = false;
@@ -74,6 +92,21 @@ let corpusCallosum: CorpusCallosum;
 let globalWorkspace: GlobalWorkspace;
 let theoryOfMind: TheoryOfMind;
 let affect: AffectCore;
+let expression: ExpressionEngine;
+let errorLedger: ErrorLedger | null = null;
+let knowledgeStore: KnowledgeStore | null = null;
+let conversationLog: ConversationLog | null = null;
+let memoryGraph: MemoryGraph | null = null;
+let factChangeTracker: FactChangeTracker | null = null;
+const autoReflector = new AutoReflector();
+const searchAdvisor = new SearchAdvisor();
+const relevanceCritic = new RelevanceCritic();
+let freshnessGuard = new FreshnessGuard();
+const sourceVerifier = new SourceVerifier();
+let timeAwareness = new TimeAwareness();
+let selfDistiller: SelfDistiller | null = null;
+let heartbeatsSinceDistill = 0;
+let heartbeatsSinceKnowledgePrune = 0;
 let fileManager: BrainFileManager;
 let storage: SqlStorageAdapter;
 let enforcer: PriorityEnforcer;
@@ -172,6 +205,12 @@ function persistExtractionResult(result: any): void {
       timestamp: entity.lastSeen || entity.firstSeen || new Date().toISOString(),
     });
   }
+
+  // Keep the memory graph in sync when facts/entities change so bridge recall
+  // reflects the latest (non-superseded) knowledge.
+  if (memoryGraph && ((result.facts?.length || 0) > 0 || (result.corrections?.length || 0) > 0)) {
+    try { memoryGraph.build(); } catch { /* best-effort */ }
+  }
 }
 
 function loadPersistedKnowledge(): void {
@@ -210,11 +249,39 @@ function safeJsonArray(value: string): string[] {
   }
 }
 
+/**
+ * Is this a clean, trustworthy fact worth injecting? A fact whose subject or
+ * object is a long rambling clause (captured by the loose "X là Y" pattern) is
+ * NOISE — injecting it buries the good facts and makes Aira distrust memory.
+ * Keep facts with a short, noun-like subject and a concise object.
+ */
+function isCleanFact(fact: any): boolean {
+  const subj = String(fact.subject || '').trim();
+  const obj = String(fact.object || '').trim();
+  if (!subj || !obj) return false;
+  if (/\n/.test(subj) || /\n/.test(obj)) return false;          // multi-line = junk
+  if (subj.length > 42 || obj.length > 60) return false;         // rambling clause
+  if (subj.split(/\s+/).length > 7) return false;                // too many words to be a subject
+  // Question-like or filler-y subjects are not real facts.
+  if (/[?？]|không\s*em|được\s+không|vậy\s+hả|nhỉ$/i.test(subj)) return false;
+  return true;
+}
+
 function getRelevantFactsContext(message: string, limit = 5): string {
   if (!storage) return '';
   const db = storage.getDatabase();
-  const facts = db.getCurrentFacts();
-  if (!facts.length) return '';
+
+  // Canonical (user-pinned) facts are identity anchors — always inject them
+  // first, at full trust, so the agent never confuses them with noisy
+  // auto-extracted triples (this is what stops "your project is X" drift).
+  const pinned: string[] = (typeof db.getPinnedFacts === 'function' ? db.getPinnedFacts() : [])
+    .map((f: any) => `${f.subject} ${f.relation} ${f.object}`);
+  const pinnedLine = pinned.length ? `Ground-truth (user-confirmed, do NOT contradict): ${pinned.join(' | ')}` : '';
+
+  const facts = db.getCurrentFacts()
+    .filter((f: any) => f.source !== 'user_canonical')
+    .filter(isCleanFact);
+  if (!facts.length) return pinnedLine;
 
   const tokens = new Set(
     message
@@ -240,8 +307,9 @@ function getRelevantFactsContext(message: string, limit = 5): string {
     .slice(0, limit)
     .map((item: any) => `${item.fact.subject} ${item.fact.relation} ${item.fact.object}`);
 
-  if (!selected.length) return '';
-  return `Relevant facts: ${selected.join(' | ')}`;
+  if (!selected.length) return pinnedLine;
+  const relevantLine = `Relevant facts: ${selected.join(' | ')}`;
+  return pinnedLine ? `${pinnedLine}\n${relevantLine}` : relevantLine;
 }
 
 async function processRuntimeCompletion(event: any, ctx: any, config: any): Promise<void> {
@@ -251,19 +319,25 @@ async function processRuntimeCompletion(event: any, ctx: any, config: any): Prom
   const key = runtimeTurnKey(event, ctx);
   if (processedRuntimeOutputs.has(key)) return;
 
-  const responseText = outputTextFromEvent(event);
-  if (!responseText || responseText.length < 5 || /\[assistant turn failed/i.test(responseText)) return;
+  const rawResponse = outputTextFromEvent(event);
+  if (!rawResponse || rawResponse.length < 5 || /\[assistant turn failed/i.test(rawResponse)) return;
+  // Redact any secrets that appeared in the agent's own reply before it can be
+  // consolidated into durable memory.
+  const responseText = redactSecrets(rawResponse).clean;
 
   let msgContext = runtimeTurns.get(key) || lastMessageContext;
   const prompt = typeof event?.prompt === 'string' ? event.prompt : '';
   if (!msgContext && prompt) {
-    msgContext = {
-      message: prompt,
-      senderId: ctx?.senderId || 'openclaw-agent',
-      senderName: 'User',
-      timestamp: new Date().toISOString(),
-      sessionId: ctx?.sessionKey || ctx?.sessionId || '',
-    };
+    const cleaned = sanitizeUserMessage(prompt).clean;
+    if (cleaned.length >= 3) {
+      msgContext = {
+        message: cleaned,
+        senderId: ctx?.senderId || 'openclaw-agent',
+        senderName: 'User',
+        timestamp: new Date().toISOString(),
+        sessionId: ctx?.sessionKey || ctx?.sessionId || '',
+      };
+    }
   }
   if (!msgContext) return;
 
@@ -329,6 +403,84 @@ async function processRuntimeCompletion(event: any, ctx: any, config: any): Prom
 
     prefrontal.completePlan();
     personalityInfluence.updateTraits(cingulate.getPersonality());
+
+    // If the user corrected Aira, record the mistake + fix in the Error Ledger.
+    if (lesson && errorLedger && lastAgentResponse) {
+      try {
+        await errorLedger.record({
+          context: msgContext.message.slice(0, 120),
+          mistake: lesson.wrong || lastAgentResponse.slice(0, 120),
+          rootCause: '',
+          fix: lesson.right,
+          tags: [String(lesson.type)],
+          timestamp: msgContext.timestamp,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Auto-reflection: track this turn's signals; if the session hits a rough
+    // streak (repeated corrections / negative sentiment), the brain reflects on
+    // its own and distills a durable "do differently" lesson — thinking like a
+    // person instead of repeating the same mistake.
+    try {
+      const reflection = autoReflector.record({
+        sessionId: msgContext.sessionId || 'default',
+        userMessage: msgContext.message,
+        agentResponse: responseText,
+        sentiment,
+        correction: !!lesson,
+        fix: lesson?.right,
+        timestamp: msgContext.timestamp,
+      });
+      if (reflection) {
+        if (config?.logging) {
+          console.log(`[AgentBrain] Auto-reflection fired on "${reflection.theme}" — distilling lesson`);
+        }
+        // Persist the distilled lesson so it is recalled next time.
+        if (knowledgeStore) {
+          await knowledgeStore.upsert({
+            kind: 'lesson',
+            title: `Tự rút kinh nghiệm: ${reflection.theme}`,
+            content: reflection.lesson,
+            tags: ['auto-reflection', reflection.theme],
+            source: 'auto-reflector',
+            confidence: 0.7,
+            timestamp: reflection.timestamp,
+          });
+        }
+        if (errorLedger) {
+          await errorLedger.record({
+            context: `streak về "${reflection.theme}"`,
+            mistake: `lặp lỗi/khiến Sếp không hài lòng ${reflection.correctionCount + reflection.negativeCount} lần về ${reflection.theme}`,
+            rootCause: 'chưa dừng lại xem lại giả định + chưa tự test',
+            fix: reflection.lesson,
+            tags: ['auto-reflection', reflection.theme],
+            timestamp: reflection.timestamp,
+          });
+        }
+      }
+    } catch { /* auto-reflection is best-effort */ }
+
+    // Log the FULL conversation turn so Aira keeps context + can search past chat.
+    if (conversationLog) {
+      try {
+        const cls = thalamus.classify(msgContext);
+        await conversationLog.record({
+          sessionId: msgContext.sessionId,
+          userId: msgContext.senderId,
+          userName: msgContext.senderName,
+          userMessage: msgContext.message,
+          agentResponse: responseText,
+          topic: cls.topic || '',
+          sentiment,
+          timestamp: msgContext.timestamp,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Persist mood + neurochemistry so emotional state carries across sessions.
+    try { await affect.persist(); await neurochem.persist(); } catch { /* best-effort */ }
+
     lastAgentResponse = responseText;
     processedRuntimeOutputs.add(key);
     runtimeTurns.delete(key);
@@ -366,7 +518,18 @@ async function ensureInitialized(config: any): Promise<boolean> {
       maintenanceInterval: config?.maintenanceInterval ?? defaultConfig.maintenanceInterval,
       reasoningWhisper: config?.reasoningWhisper ?? defaultConfig.reasoningWhisper,
       advisorModel: config?.advisorModel ?? defaultConfig.advisorModel,
+      volatileTtlSeconds: config?.volatileTtlSeconds ?? defaultConfig.volatileTtlSeconds,
     };
+
+    // Reconfigure the freshness guard with the (possibly custom) TTLs so the
+    // "re-search stale prices" window is tunable via plugin config.
+    if (brainConfig.volatileTtlSeconds) {
+      freshnessGuard = new FreshnessGuard({ ttlSeconds: {
+        price: brainConfig.volatileTtlSeconds.price ?? 300,
+        market: brainConfig.volatileTtlSeconds.market ?? 300,
+        balance: brainConfig.volatileTtlSeconds.balance ?? 900,
+      }});
+    }
 
     // SQL storage (primary)
     storage = new SqlStorageAdapter(brainDir);
@@ -409,12 +572,16 @@ async function ensureInitialized(config: any): Promise<boolean> {
       : new ReasoningCortex(brainConfig, hippocampus, temporal);
 
     // Phase 2 modules (v0.6.0) â€” now REAL, wired into the pipeline
-    hypothalamus = new Hypothalamus('Asia/Ho_Chi_Minh');
+    const tz = config?.timezone || 'Asia/Ho_Chi_Minh';
+    hypothalamus = new Hypothalamus(tz);
+    timeAwareness = new TimeAwareness(tz);
     brainstem = new Brainstem();
     corpusCallosum = new CorpusCallosum();
     globalWorkspace = new GlobalWorkspace();
     theoryOfMind = new TheoryOfMind();
-    affect = new AffectCore();
+    affect = new AffectCore(storage as any);
+    await affect.initialize(); // load persisted mood so emotion survives /new & restarts
+    expression = new ExpressionEngine();
     for (const id of ['thalamus', 'hippocampus', 'amygdala', 'neurochemistry', 'cingulate', 'cerebellum', 'basalGanglia', 'prefrontal', 'temporal', 'parietal', 'insula', 'metacognition', 'reasoningCortex', 'hypothalamus', 'brainstem', 'globalWorkspace', 'theoryOfMind', 'affect']) {
       corpusCallosum.register(id);
     }
@@ -442,6 +609,80 @@ async function ensureInitialized(config: any): Promise<boolean> {
       try { proactiveEngine.loadPatterns(JSON.parse(patternsData)); } catch (e) {}
     }
 
+    // Load distilled/learned reasoning playbooks so teacher-quality thinking
+    // (e.g. from an Opus-4.8 distillation run) reaches Aira at runtime. This is
+    // what lets AgentBrain grow smarter over time and keep that growth.
+    try {
+      const learnedRaw = await storage.readFile('learning/reasoning-playbooks.md');
+      if (learnedRaw) {
+        const arr: SerializedPlaybook[] = JSON.parse(learnedRaw);
+        for (const sp of arr) registerLearnedPlaybook(deserializePlaybook(sp));
+        console.log(`[AgentBrain] Loaded ${arr.length} distilled reasoning playbooks (total playbooks: ${countPlaybooks().total})`);
+      }
+    } catch (e) { /* best-effort */ }
+
+    // Attach a LOCAL semantic matcher (MiniLM embeddings, CPU) so reasoning
+    // playbooks match by INTENT, not just keywords — this is what makes the
+    // distilled thinking generalize to phrasings it was never written for.
+    try {
+      if (reasoningCortex) {
+        const matcher = new SemanticPlaybookMatcher(getEmbeddingEngine(), { threshold: 0.5 });
+        // Warm up in the background; falls back to regex until ready.
+        matcher.warmup().then((ok) => {
+          if (ok) console.log('[AgentBrain] Semantic playbook matcher ready (local MiniLM)');
+        }).catch(() => { /* stays regex-only */ });
+        reasoningCortex.setSemanticMatcher(matcher);
+      }
+    } catch (e) { /* best-effort: regex matching still works */ }
+
+    // Error Ledger: remember mistakes made + their fixes, recall them for Aira.
+    try {
+      errorLedger = new ErrorLedger(storage as any, getEmbeddingEngine());
+      await errorLedger.initialize();
+      // Seed distilled common mistakes on first ever init (empty ledger).
+      if (errorLedger.size() === 0) {
+        const { OPUS_DISTILLATION } = await import('../training/distillation-corpus.js');
+        for (const err of OPUS_DISTILLATION.commonErrors) {
+          await errorLedger.record({
+            context: err.context, mistake: err.mistake,
+            rootCause: err.rootCause, fix: err.fix, tags: err.tags,
+          });
+        }
+        console.log(`[AgentBrain] Error ledger seeded with ${errorLedger.size()} distilled mistakes`);
+      }
+    } catch (e) { /* best-effort */ }
+
+    // Durable searchable knowledge (embeddings + dedup + prune) and the daily
+    // conversation log so Aira remembers context and can search past chat.
+    try {
+      const brainDb = (storage as any).getDatabase ? (storage as any).getDatabase() : null;
+      if (brainDb) {
+        knowledgeStore = new KnowledgeStore(brainDb, getEmbeddingEngine());
+        conversationLog = new ConversationLog(brainDb, getEmbeddingEngine());
+        console.log(`[AgentBrain] Knowledge store: ${knowledgeStore.size()} items | Conversation log: ${conversationLog.size()} turns`);
+        // Self-distiller: brain learns durable knowledge from its own
+        // successful conversations over time (watermarked, dedup'd).
+        selfDistiller = new SelfDistiller(knowledgeStore, conversationLog, storage as any);
+        // Knowledge graph over facts/entities for multi-hop "bridge" recall.
+        memoryGraph = new MemoryGraph(brainDb);
+        factChangeTracker = new FactChangeTracker(brainDb);
+        try {
+          memoryGraph.build();
+          const gs = memoryGraph.stats();
+          console.log(`[AgentBrain] Memory graph: ${gs.nodes} nodes, ${gs.edges} edges`);
+        } catch { /* best-effort */ }
+      }
+    } catch (e) { /* best-effort */ }
+
+    // Load distilled lessons (merged with any correction-learned lessons).
+    try {
+      const distilledRaw = await storage.readFile('learning/distilled-lessons.md');
+      if (distilledRaw) {
+        const distilled = JSON.parse(distilledRaw);
+        for (const l of distilled) lessonLearner.addLesson(l);
+      }
+    } catch (e) { /* best-effort */ }
+
     // PersonalityInfluence from current traits
     const personality = cingulate.getPersonality();
     personalityInfluence = new PersonalityInfluence({
@@ -454,7 +695,7 @@ async function ensureInitialized(config: any): Promise<boolean> {
     });
 
     initialized = true;
-    console.log('[AgentBrain] Plugin v0.4.1 initialized â€” SQL storage + circadian + source routing + brain whisper online');
+    console.log('[AgentBrain] Plugin v0.16.2 initialized — SQL storage + memory graph + fact-change tracking + forgetting curve + auto-reflection + adaptive RAG + search-first + time awareness online');
     return true;
   } catch (err: any) {
     console.warn('[AgentBrain] Initialization failed:', err.message);
@@ -475,7 +716,12 @@ const _plugin = definePluginEntry({
         if (config?.enabled === false) return;
         if (!await ensureInitialized(config)) return;
 
-        const text = typeof event?.prompt === 'string' ? event.prompt : '';
+        const rawText = typeof event?.prompt === 'string' ? event.prompt : '';
+        // Sanitize BEFORE anything remembers it: strip AgentBrain's own injected
+        // Brain State / whisper blocks, retry+metadata envelopes, and redact
+        // secrets. Otherwise the brain remembers its own context as "the user".
+        const sanitized = sanitizeUserMessage(rawText);
+        const text = sanitized.clean;
         if (!text || text.length < 3) return;
 
         const msgContext: MessageContext = {
@@ -586,12 +832,114 @@ const _plugin = definePluginEntry({
           const recallQuery = semanticRep.concepts.length > 0
             ? semanticRep.concepts.join(' ')
             : message;
-          const relevantMemories = await hippocampus.recall(recallQuery, classification.topic);
+          let relevantMemories = await hippocampus.recall(recallQuery, classification.topic);
+
+          // Self-RAG relevance criticism: drop stale/irrelevant memories and
+          // surface conflicts instead of silently blending them.
+          let criticContext = '';
+          try {
+            const wantsHistory = /lần trước|trước đây|đã|history|previous|last time/i.test(message);
+            const critique = relevanceCritic.critique(relevantMemories, {
+              query: message,
+              wantsHistory,
+              maxKeep: config?.maxRecallResults ?? 6,
+            });
+            relevantMemories = critique.kept;
+            criticContext = relevanceCritic.formatForInjection(critique);
+          } catch { /* critic is best-effort */ }
+
+          // Search-first advisor: decide whether Aira must search the web before
+          // answering (volatile/time-sensitive/factual queries). This is the
+          // discipline the user explicitly asked for: "luôn search đàng hoàng
+          // trước khi trả lời".
+          let searchDirective = '';
+          let searchUrgency: 'none' | 'recommended' | 'required' = 'none';
+          try {
+            const hasWebSearch = config?.hasWebSearch !== false; // brave/duckduckgo enabled by default
+            const advice = searchAdvisor.advise(message, { hasWebSearch });
+            searchUrgency = advice.urgency;
+            if (advice.urgency !== 'none') searchDirective = advice.directive;
+          } catch { /* advisor is best-effort */ }
+
+          // Freshness/TTL guard (Graphiti-style validity windows): if the query
+          // is about volatile data (price/market/balance) and any recalled
+          // memory carrying a number is older than its TTL (~5 min for prices),
+          // warn Aira NOT to reuse the stale number and force a live re-search.
+          let freshnessContext = '';
+          try {
+            const volatileKind = freshnessGuard.queryIsVolatile(message);
+            if (volatileKind !== 'none') {
+              // Combine ranked recall with a direct term-scan so stale volatile
+              // data is caught even when semantic recall under-ranks a short
+              // price query (e.g. "giá PRL giờ bao nhiêu?").
+              const terms = message
+                .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+                .split(/\s+/)
+                .filter((w: string) => w.length > 1);
+              const scanned = hippocampus.scanByTerms(terms);
+              const seen = new Set<string>();
+              const candidates = [...relevantMemories, ...scanned].filter((m) => {
+                if (seen.has(m.id)) return false;
+                seen.add(m.id);
+                return true;
+              });
+              const { warning, hasStale } = freshnessGuard.buildStaleWarning(
+                candidates.map((m) => ({
+                  content: m.content,
+                  timestamp: m.timestamp,
+                  lastAccessed: m.lastAccessed,
+                })),
+              );
+              if (hasStale) {
+                freshnessContext = warning;
+                // Escalate to a hard search demand even if the advisor was softer.
+                if (searchUrgency !== 'required') {
+                  searchDirective = searchDirective
+                    ? searchDirective + '\n⏱️ Nâng mức: BẮT BUỘC search lại vì số liệu nhớ đã quá hạn.'
+                    : '🔎 SEARCH-FIRST (bắt buộc): số liệu giá/thị trường trong trí nhớ đã quá hạn, phải search live trước khi trả lời.';
+                }
+              }
+            }
+          } catch { /* freshness guard is best-effort */ }
+
+          // Source-identity verification: for named/ambiguous entities (tokens,
+          // projects, people) force Aira to confirm the RIGHT one across the
+          // official site, X/Twitter, news, and the canonical source — a
+          // name/ticker match is not identity (fixes "wrong PRL token").
+          let verifyContext = '';
+          try {
+            const hasWebSearch = config?.hasWebSearch !== false;
+            const v = sourceVerifier.advise(message, { hasWebSearch });
+            if (v.needed) verifyContext = v.directive;
+          } catch { /* verifier is best-effort */ }
+
+          // Time awareness: tell Aira the current time/buổi/ngày/lễ, and when the
+          // PREVIOUS message arrived + a natural gap inference (e.g. overnight →
+          // "chắc Sếp mới ngủ dậy"). Makes Aira feel like it lives in real time.
+          let timeContext = '';
+          try {
+            const now = timeAwareness.nowContext();
+            const parts: string[] = [now.line];
+            if (conversationLog) {
+              const prev = conversationLog.recent(1, lastMessageContext?.sessionId);
+              const prevTs = prev.length > 0 ? prev[prev.length - 1].timestamp : null;
+              if (prevTs) {
+                const gap = timeAwareness.inferGap(prevTs);
+                if (gap) parts.push(gap);
+                else {
+                  const when = timeAwareness.describeTimestamp(prevTs);
+                  if (when) parts.push(`Tin trước của Sếp ${when}.`);
+                }
+              }
+            }
+            timeContext = parts.join('\n');
+          } catch { /* time awareness is best-effort */ }
 
           // Amygdala emotion state
           const emotionalState = amygdala.getState();
           const relationship = amygdala.getRelationship(msgContext.senderId);
           let feeling: { label: string; intensity: number; valence: number; arousal: number } | undefined;
+          let expressionContext: string | undefined;
           try {
             const affectState = affect.getState();
             feeling = {
@@ -600,7 +948,17 @@ const _plugin = definePluginEntry({
               valence: affectState.dimensional.valence,
               arousal: affectState.dimensional.arousal,
             };
-          } catch { /* affect state is best-effort */ }
+            // Turn the felt emotion into HOW Aira should sound this turn — a rich
+            // expression (mood word + varied kaomoji + tone/energy + verbal tics)
+            // instead of just numbers, so Aira expresses real emotion not bot-flat.
+            if (config?.enableEmotions !== false && config?.enableExpression !== false) {
+              const profile = expression.render({
+                affect: affectState,
+                neuro: neurochem.getState(),
+              });
+              expressionContext = expression.formatForInjection(profile);
+            }
+          } catch { /* affect/expression state is best-effort */ }
 
           // Lessons from past corrections
           const relevantLessons = lessonLearner.findRelevantLessons(message);
@@ -628,6 +986,77 @@ const _plugin = definePluginEntry({
             : '';
 
           const factsContext = getRelevantFactsContext(message);
+
+          // Memory graph: surface bridge facts connected across links (multi-hop)
+          // so Aira can reason "dự án đó chạy chain nào" style questions.
+          let graphContext = '';
+          try {
+            if (memoryGraph) {
+              graphContext = memoryGraph.formatForInjection(message, { maxHops: 2, limit: 5 });
+            }
+          } catch { /* graph is best-effort */ }
+
+          // Fact-change reminders: if a value relevant to this query was updated
+          // (superseded), tell Aira the OLD → NEW so it never quotes stale facts.
+          let factChangeContext = '';
+          try {
+            if (factChangeTracker) {
+              const changes = factChangeTracker.relevantChanges(message, { limit: 3 });
+              factChangeContext = factChangeTracker.formatForInjection(changes);
+            }
+          } catch { /* best-effort */ }
+
+          // Đúc kết kinh nghiệm: surface the brain's own learned insights so
+          // Aira benefits from them automatically, not only via a manual tool.
+          let insightsContext = '';
+          try {
+            if (memoryReviewer) {
+              const insights = (memoryReviewer as MemoryReviewer).getInsights(3)
+                .filter((i: any) => i.confidence >= 0.5)
+                .slice(-2);
+              if (insights.length > 0) {
+                insightsContext = `Kinh nghiệm đúc kết: ${insights.map((i: any) => i.title).join(' | ')}`;
+              }
+            }
+          } catch { /* insights are best-effort */ }
+
+          // Recall past mistakes relevant to THIS task and remind Aira not to
+          // repeat them (learned-from-errors memory).
+          let errorContext = '';
+          try {
+            if (errorLedger) {
+              const past = await errorLedger.recall(message, 3);
+              if (past.length > 0) errorContext = errorLedger.formatForInjection(past);
+            }
+          } catch { /* best-effort */ }
+
+          // Conversation continuity: recent turns + semantically-relevant past
+          // chat so Aira does not forget context between messages.
+          let convContext = '';
+          try {
+            if (conversationLog) {
+              convContext = await conversationLog.buildContext(message, {
+                recent: 3, relevant: 2,
+                sessionId: lastMessageContext?.sessionId,
+              });
+            }
+          } catch { /* best-effort */ }
+
+          // Semantic search over the distilled KnowledgeStore: surface the most
+          // relevant lessons/procedures/facts for THIS message so the brain's
+          // accumulated knowledge actually reaches Aira (RAG-style retrieval).
+          let knowledgeContext = '';
+          try {
+            if (knowledgeStore && knowledgeStore.size() > 0) {
+              const hits = await knowledgeStore.search(message, { limit: 3, minScore: 0.34 });
+              const useful = hits.filter((h: any) => h.item.kind !== 'playbook'); // playbooks already flow via reasoning cortex
+              if (useful.length > 0) {
+                const lines = useful.map((h: any) => `  • [${h.item.kind}] ${h.item.title.slice(0, 90)}`);
+                knowledgeContext = `Tri thức liên quan (đã học):\n${lines.join('\n')}`;
+              }
+            }
+          } catch { /* best-effort */ }
+
           const sessionId = ctx?.sessionKey || ctx?.sessionId || msgContext.sessionId || 'default';
 
           let reasoningWhisper = '';
@@ -682,11 +1111,23 @@ const _plugin = definePluginEntry({
             workingMemory: prefrontal.getWorkingMemory(),
             rewardTrend: basalGanglia.getRecentTrend(),
             feeling,
+            expressionContext,
             lessonsContext,
             styleDirectives,
             suggestionsContext,
             factsContext,
+            graphContext,
+            factChangeContext,
+            insightsContext,
+            errorContext,
+            convContext,
+            knowledgeContext,
             reasoningWhisper,
+            searchDirective,
+            criticContext,
+            freshnessContext,
+            verifyContext,
+            timeContext,
           };
 
           // Generate injectable context
@@ -747,6 +1188,36 @@ const _plugin = definePluginEntry({
               circadianAlertness: h.circadian.alertnessLevel,
             });
           } catch { /* spontaneous affect is best-effort */ }
+
+          // Periodic self-distillation: every ~10 heartbeats, learn durable
+          // knowledge from recent successful chat (runs in background).
+          heartbeatsSinceDistill++;
+          if (selfDistiller && heartbeatsSinceDistill >= 10) {
+            heartbeatsSinceDistill = 0;
+            selfDistiller.run().then((rep) => {
+              if (rep.learned > 0 && config?.logging) {
+                console.log(`[AgentBrain] Self-distilled ${rep.learned} new knowledge item(s) from real chat`);
+              }
+            }).catch(() => { /* best-effort */ });
+          }
+
+          // Forgetting-curve maintenance for the DURABLE stores: every ~20
+          // heartbeats prune stale, never-used, low-confidence knowledge so the
+          // brain stays lean (không phình vô ích) and rebuild the graph so it
+          // reflects the current facts.
+          heartbeatsSinceKnowledgePrune++;
+          if (heartbeatsSinceKnowledgePrune >= 20) {
+            heartbeatsSinceKnowledgePrune = 0;
+            try {
+              if (knowledgeStore) {
+                const pruned = knowledgeStore.prune({ maxAgeDays: 30, minConfidence: 0.4 });
+                if (pruned > 0 && config?.logging) {
+                  console.log(`[AgentBrain] Pruned ${pruned} stale knowledge item(s)`);
+                }
+              }
+              if (memoryGraph) memoryGraph.build();
+            } catch { /* best-effort */ }
+          }
           return; // Don't process heartbeat as regular message
         }
 
@@ -950,6 +1421,22 @@ const _plugin = definePluginEntry({
             console.log(`[AgentBrain] Lesson learned: ${lesson.type} â€” ${lesson.right.slice(0, 60)}`);
           }
 
+          // If the user corrected Aira, that means the PRIOR response was a
+          // mistake — record it + the fix in the Error Ledger so it is recalled
+          // next time and never repeated.
+          if (lesson && errorLedger && lastAgentResponse) {
+            try {
+              await errorLedger.record({
+                context: lastMessageContext.message.slice(0, 120),
+                mistake: lesson.wrong || lastAgentResponse.slice(0, 120),
+                rootCause: '',
+                fix: lesson.right,
+                tags: [String(lesson.type)],
+                timestamp: lastMessageContext.timestamp,
+              });
+            } catch { /* best-effort */ }
+          }
+
           // Detect sentiment for reward
           const sentiment = amygdala.detectSentiment(lastMessageContext.message);
           
@@ -1003,6 +1490,31 @@ const _plugin = definePluginEntry({
 
           // Track last response for lesson learning
           lastAgentResponse = responseText;
+
+          // Log the FULL conversation turn so Aira keeps context and can
+          // search past chat later (không quên câu trước câu sau).
+          try {
+            if (conversationLog) {
+              const cls = thalamus.classify(lastMessageContext);
+              await conversationLog.record({
+                sessionId: lastMessageContext.sessionId,
+                userId: lastMessageContext.senderId,
+                userName: lastMessageContext.senderName,
+                userMessage: lastMessageContext.message,
+                agentResponse: responseText,
+                topic: cls.topic || '',
+                sentiment,
+                timestamp: lastMessageContext.timestamp,
+              });
+            }
+          } catch { /* best-effort */ }
+
+          // Persist mood + neurochemistry every turn so emotional state carries
+          // across /new, /reset and restarts (not only on a clean agent_end).
+          try {
+            await affect.persist();
+            await neurochem.persist();
+          } catch { /* best-effort */ }
         } catch (err: any) {
           if (config?.logging) {
             console.warn('[AgentBrain] message_sent processing failed:', err.message);
@@ -1026,7 +1538,7 @@ const _plugin = definePluginEntry({
     api.on(
       'agent_end',
       async (event: any, ctx: any) => {
-        const config = ctx?.pluginConfig;
+        const config = ctx?.pluginConfig || event?.context?.pluginConfig;
         if (config?.enabled === false) return;
         await processRuntimeCompletion(event, ctx, config);
         if (!initialized) return;
@@ -1035,6 +1547,7 @@ const _plugin = definePluginEntry({
           // Persist all module states via SQL adapter
           await amygdala.persist();
           await neurochem.persist();
+          await affect.persist(); // carry mood into the next session
           await cingulate.persist();
           await cerebellum.persist();
           await basalGanglia.persist();
@@ -1221,8 +1734,23 @@ const _plugin = definePluginEntry({
           ? params.topic.trim()
           : 'general';
 
+        let graph: any = { nodes: 0, edges: 0 };
+        let connectedFacts: any[] = [];
+        try {
+          if (memoryGraph) {
+            memoryGraph.build();
+            graph = memoryGraph.stats();
+            if (query) {
+              const res = memoryGraph.recallConnected(query, { maxHops: 2, limit: 8 });
+              connectedFacts = res.facts.map((f: any) => `${f.subject} ${f.relation} ${f.object}`);
+            }
+          }
+        } catch { /* best-effort */ }
+
         return {
           memoryStats: hippocampus.getStats(),
+          graph,
+          connectedFacts,
           temporalState: temporal.getState(),
           parietalState: parietal.getState(),
           relatedMemories: query ? await hippocampus.recall(query, topic) : [],

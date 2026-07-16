@@ -10,6 +10,8 @@
  * This feeds into Hippocampus for smarter memory storage.
  */
 
+import { isSystemNoise, stripNoiseLines } from './noise-filter.js';
+
 export interface Entity {
   name: string;
   type: 'person' | 'project' | 'tool' | 'address' | 'service' | 'concept' | 'number';
@@ -228,6 +230,13 @@ export class KnowledgeExtractor {
     context: ExtractionContext,
     result: ExtractionResult
   ): void {
+    // Never extract facts/entities from runtime telemetry or system noise.
+    const clean = stripNoiseLines(text);
+    if (!clean || isSystemNoise(text)) {
+      return;
+    }
+    text = clean;
+
     // Extract entities
     this.extractEntities(text, context.timestamp, result);
 
@@ -292,17 +301,76 @@ export class KnowledgeExtractor {
   }
 
   private cleanSubject(value: string): string {
-    return value
+    let v = value
       .replace(/^(?:hãy\s+)?(?:ghi\s+nhớ|remember|note)\s*[:,-]?\s*/iu, '')
       .replace(/^(?:rằng|that)\s+/iu, '')
       .trim();
+    // Strip leading conjunctions / filler that the loose "X là Y" pattern often
+    // captures ("và dự án chính của anh tên" → "dự án"). A garbage subject makes
+    // an otherwise-correct fact read like noise to Aira, so normalize the head.
+    for (let i = 0; i < 4; i++) {
+      const before = v;
+      v = v
+        .replace(/^(?:và|and|còn|rồi|thì|mà|nên|với|cũng|là|nữa|ờ|à|ừ|ok|okay)\s+/iu, '')
+        .replace(/^(?:anh|em|sếp|mình|tôi|tui|bạn|nó|họ)\s+(?:cho\s+em\s+biết\s+|nói\s+|bảo\s+|dặn\s+)?/iu, '')
+        .replace(/\s+(?:tên|tên\s+là|có\s+tên)$/iu, '')
+        .trim();
+      if (v === before) break;
+    }
+    return v || value.trim();
   }
 
   private cleanObject(value: string): string {
     return value
       .replace(/\s+(?:và|and)\s+.*$/iu, '')
+      .replace(/\s+(?:rồi|nha|nhé|luôn|đó|ạ)\s*$/iu, '')
       .replace(/[.!?。]+$/u, '')
       .trim();
+  }
+
+  /**
+   * Normalized "core" of a subject for conflict detection: drop leading time /
+   * filler words (giờ, hiện tại, bây giờ) and generic qualifiers (chính, chủ)
+   * and articles so "database chính của dự án" and "giờ dự án" match on the
+   * shared head noun ("dự án"). Used only for supersede matching.
+   */
+  private subjectCore(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\b(gio|hien tai|bay gio|hom nay|now|currently|the)\b/g, ' ')
+      .replace(/\b(chinh|chu yeu|main|primary)\b/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 1)
+      .join(' ')
+      .trim();
+  }
+
+  /** Do two subjects refer to the same thing? (core token containment) */
+  private sameSubject(a: string, b: string): boolean {
+    const ca = this.subjectCore(a);
+    const cb = this.subjectCore(b);
+    if (!ca || !cb) return false;
+    if (ca === cb) return true;
+    const SUBJ_STOP = new Set(['cua', 'la', 'va', 'cho', 'den', 'voi', 'mot', 'nay', 'do']);
+    const meaningful = (c: string) =>
+      new Set(c.split(' ').filter((w) => w.length >= 2 && !SUBJ_STOP.has(w)));
+    const ta = meaningful(ca);
+    const tb = meaningful(cb);
+    if (ta.size === 0 || tb.size === 0) return false;
+    // one subject's meaningful tokens are a subset of the other's (shared head noun)
+    const [small, big] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
+    let hit = 0;
+    for (const t of small) if (big.has(t)) hit++;
+    return hit === small.size;
+  }
+
+  /** Relations that express the same kind of assertion (value assignment). */
+  private compatibleRelation(a: string, b: string): boolean {
+    if (a === b) return true;
+    const valueRels = new Set(['is', 'uses', 'runs_on', 'costs', 'balance']);
+    return valueRels.has(a) && valueRels.has(b);
   }
 
   private makeEntity(name: string, type: Entity['type'], timestamp: string): Entity {
@@ -319,8 +387,9 @@ export class KnowledgeExtractor {
       // Find existing facts with same subject+relation but different object
       const conflicting = this.facts.find(f =>
         !f.supersededBy &&
-        f.subject.toLowerCase() === newFact.subject.toLowerCase() &&
-        f.relation === newFact.relation &&
+        f.id !== newFact.id &&
+        this.sameSubject(f.subject, newFact.subject) &&
+        this.compatibleRelation(f.relation, newFact.relation) &&
         f.object.toLowerCase() !== newFact.object.toLowerCase()
       );
 

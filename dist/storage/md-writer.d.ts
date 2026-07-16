@@ -21,6 +21,12 @@ export declare class BrainFileManager {
      */
     writeMemoryFile(type: 'episodic' | 'semantic' | 'procedural', memories: Memory[]): Promise<void>;
     /**
+     * Delete is handled implicitly for the markdown backend: memories are fully
+     * rewritten by writeMemoryFile, so a removed memory simply won't be written
+     * back. This no-op keeps the storage interface uniform with SqlStorageAdapter.
+     */
+    deleteMemory(_id: string): Promise<void>;
+    /**
      * Append to a brain file (for logs, reflections, etc.)
      */
     appendToFile(subPath: string, content: string): Promise<void>;

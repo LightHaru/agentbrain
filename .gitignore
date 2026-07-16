@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+**/node_modules/
 
 # Data and databases
 *.db
@@ -41,3 +42,8 @@ temp/
 # Logs
 *.log
 npm-debug.log*
+
+# Eval baseline artifacts (local measurement, not source)
+eval-baseline-*.json
+eval-baseline-*.txt
+eval-final*.json

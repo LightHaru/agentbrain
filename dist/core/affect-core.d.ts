@@ -65,6 +65,11 @@ export interface AffectState {
         trigger: string;
     }>;
 }
+/** Minimal storage surface AffectCore needs to persist mood across sessions. */
+export interface AffectStore {
+    readFile(path: string): Promise<string | null>;
+    writeFile(path: string, content: string): Promise<void>;
+}
 export declare class AffectCore {
     private baselineValence;
     private baselineArousal;
@@ -74,11 +79,33 @@ export declare class AffectCore {
     private lastAppraisal;
     private lastTrigger;
     private recent;
+    /** how much of the current mood carries into the next turn (0..1). */
+    private moodInertia;
+    /** incoming emotion must reach this fraction of the lingering intensity to switch. */
+    private switchResistance;
+    private store;
+    constructor(store?: AffectStore | null, opts?: {
+        moodInertia?: number;
+        switchResistance?: number;
+    });
+    /** Load persisted mood so emotion survives restarts / new sessions. */
+    initialize(): Promise<void>;
+    /** Persist current mood + baseline so it carries into the next session. */
+    persist(): Promise<void>;
+    serialize(): string;
+    restore(raw: string): void;
     /**
      * Event-driven emotion generation. Returns the discrete emotion the agent
      * actually feels given HOW it appraises the situation, not just its valence.
      */
     appraise(input: AppraisalInput, trigger?: string): DiscreteEmotion;
+    /**
+     * Emotional inertia. The current mood lingers and only yields when the new
+     * feeling is strong enough. Same emotion → reinforce (intensity climbs).
+     * Different emotion → the incoming must beat the decayed current mood to take
+     * over; if it can't, the current mood holds but is nudged toward the new one.
+     */
+    private blendWithMomentum;
     /**
      * Spontaneous affect. Called on a heartbeat/interval with the agent's own
      * interoceptive signals. Generates emotion from internal state alone —

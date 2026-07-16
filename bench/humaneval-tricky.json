@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ht-1-round_half_even",
+    "prompt": "Viết hàm `bankers_round(x)` làm tròn theo kiểu 'round half to even' (banker's rounding) về số nguyên gần nhất; 0.5→0, 1.5→2, 2.5→2, -0.5→0.",
+    "entry": "bankers_round",
+    "tests": "assert bankers_round(0.5)==0\nassert bankers_round(1.5)==2\nassert bankers_round(2.5)==2\nassert bankers_round(-0.5)==0\nassert bankers_round(3.5)==4\nassert bankers_round(2.4)==2"
+  },
+  {
+    "id": "ht-2-chunk_pad",
+    "prompt": "Viết hàm `chunk(lst, n)` chia list thành các nhóm n phần tử. Nhóm cuối nếu THIẾU thì KHÔNG pad. n<=0 trả về []. Trả về list các list.",
+    "entry": "chunk",
+    "tests": "assert chunk([1,2,3,4,5],2)==[[1,2],[3,4],[5]]\nassert chunk([],3)==[]\nassert chunk([1,2],0)==[]\nassert chunk([1,2,3],5)==[[1,2,3]]\nassert chunk([1,2,3],-1)==[]"
+  },
+  {
+    "id": "ht-3-parse_version",
+    "prompt": "Viết hàm `compare_version(a, b)` so 2 version string kiểu '1.2.0'. Trả về -1 nếu a<b, 0 nếu bằng, 1 nếu a>b. '1.0'=='1.0.0'. Số sánh theo giá trị (1.10 > 1.9).",
+    "entry": "compare_version",
+    "tests": "assert compare_version('1.2.0','1.2.0')==0\nassert compare_version('1.0','1.0.0')==0\nassert compare_version('1.10','1.9')==1\nassert compare_version('1.2','1.2.1')==-1\nassert compare_version('2.0','1.9.9')==1"
+  },
+  {
+    "id": "ht-4-safe_divide_chain",
+    "prompt": "Viết hàm `eval_rpn(tokens)` tính biểu thức Reverse Polish Notation (list token gồm số và '+ - * /'). Chia là chia NGUYÊN làm tròn về 0 (truncate toward zero) như C. Đảm bảo -7//2 kiểu này ra -3 chứ không phải -4.",
+    "entry": "eval_rpn",
+    "tests": "assert eval_rpn(['2','1','+','3','*'])==9\nassert eval_rpn(['4','13','5','/','+'])==6\nassert eval_rpn(['7','2','/'])==3\nassert eval_rpn(['-7','2','/'])==-3\nassert eval_rpn(['10'])==10"
+  },
+  {
+    "id": "ht-5-group_anagrams",
+    "prompt": "Viết hàm `group_anagrams(words)` gom các từ là anagram của nhau. Trả về list các nhóm; mỗi nhóm sort tăng dần theo alphabet; các nhóm sort theo phần tử đầu của nhóm.",
+    "entry": "group_anagrams",
+    "tests": "assert group_anagrams(['eat','tea','tan','ate','nat','bat'])==[['ate','eat','tea'],['bat'],['nat','tan']]\nassert group_anagrams([])==[]\nassert group_anagrams(['a'])==[['a']]"
+  }
+]

@@ -1,74 +1,76 @@
-﻿{
-    "name":  "@lightharu/agentbrain",
-    "version":  "0.10.0",
-    "description":  "Brain-inspired cognitive architecture plugin for AI agents. Self-evolving personality, memory, emotions, and learning.",
-    "main":  "dist/index.js",
-    "types":  "dist/index.d.ts",
-    "files":  [
-                  "dist/",
-                  "skills/",
-                  "openclaw.plugin.json",
-                  "README.md",
-                  "CHANGELOG.md",
-                  "LICENSE"
-              ],
-    "openclaw":  {
-                     "id":  "agentbrain",
-                     "extensions":  [
-                                        "./dist/plugin/entry.js"
-                                    ],
-                     "compat":  {
-                                    "pluginApi":  "\u003e=2026.3.24-beta.2",
-                                    "minGatewayVersion":  "2026.3.24-beta.2"
-                                },
-                     "build":  {
-                                   "openclawVersion":  "\u003e=2026.3.24",
-                                   "entry":  "dist/plugin/entry.js"
-                               }
-                 },
-    "scripts":  {
-                    "build":  "tsc",
-                    "dev":  "tsc --watch",
-                    "test":  "vitest run",
-                    "test:watch":  "vitest",
-                    "migrate:memory-graph":  "node scripts/migrate-memory-graph.mjs",
-                    "lint":  "eslint src/",
-                    "clean":  "rm -rf dist/"
-                },
-    "keywords":  [
-                     "ai-agent",
-                     "cognitive-architecture",
-                     "brain",
-                     "memory",
-                     "personality",
-                     "self-learning",
-                     "openclaw",
-                     "plugin"
-                 ],
-    "author":  "KLSGG",
-    "license":  "MIT",
-    "repository":  {
-                       "type":  "git",
-                       "url":  "git+https://github.com/KLSGG/agentbrain.git"
-                   },
-    "homepage":  "https://github.com/KLSGG/agentbrain#readme",
-    "bugs":  {
-                 "url":  "https://github.com/KLSGG/agentbrain/issues"
-             },
-    "engines":  {
-                    "node":  "\u003e=20.0.0"
-                },
-    "dependencies":  {
-                         "@huggingface/transformers":  "^4.2.0",
-                         "better-sqlite3":  "^11.0.0",
-                         "gray-matter":  "^4.0.3"
-                     },
-    "devDependencies":  {
-                            "@types/better-sqlite3":  "^7.6.0",
-                            "@types/node":  "^22.0.0",
-                            "eslint":  "^9.0.0",
-                            "tsx":  "^4.19.0",
-                            "typescript":  "^5.5.0",
-                            "vitest":  "^2.0.0"
-                        }
+{
+    "name": "@lightharu/agentbrain",
+    "version": "0.16.3",
+    "description": "Brain-inspired cognitive architecture plugin for AI agents. Self-evolving personality, memory, emotions, and learning.",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist/",
+        "skills/",
+        "openclaw.plugin.json",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE"
+    ],
+    "openclaw": {
+        "id": "agentbrain",
+        "extensions": [
+            "./dist/plugin/entry.js"
+        ],
+        "compat": {
+            "pluginApi": ">=2026.3.24-beta.2",
+            "minGatewayVersion": "2026.3.24-beta.2"
+        },
+        "build": {
+            "openclawVersion": ">=2026.3.24",
+            "entry": "dist/plugin/entry.js"
+        }
+    },
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "migrate:memory-graph": "node scripts/migrate-memory-graph.mjs",
+        "eval:recall": "node scripts/recall-eval.mjs",
+        "export:dashboard": "node scripts/export-brain-state.mjs",
+        "lint": "eslint src/",
+        "clean": "rm -rf dist/"
+    },
+    "keywords": [
+        "ai-agent",
+        "cognitive-architecture",
+        "brain",
+        "memory",
+        "personality",
+        "self-learning",
+        "openclaw",
+        "plugin"
+    ],
+    "author": "KLSGG",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/KLSGG/agentbrain.git"
+    },
+    "homepage": "https://github.com/KLSGG/agentbrain#readme",
+    "bugs": {
+        "url": "https://github.com/KLSGG/agentbrain/issues"
+    },
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "dependencies": {
+        "@huggingface/transformers": "^4.2.0",
+        "better-sqlite3": "^11.0.0",
+        "gray-matter": "^4.0.3"
+    },
+    "devDependencies": {
+        "@types/better-sqlite3": "^7.6.0",
+        "@types/node": "^22.0.0",
+        "eslint": "^9.0.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5.5.0",
+        "vitest": "^2.0.0"
+    }
 }

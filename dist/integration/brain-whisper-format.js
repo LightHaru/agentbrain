@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.formatWhisper = formatWhisper;
 exports.inferFeedbackOutcome = inferFeedbackOutcome;
 exports.getInjectionBudget = getInjectionBudget;
+const reasoning_playbooks_js_1 = require("../core/reasoning-playbooks.js");
 /**
  * Format Brain Whisper for private prompt injection.
  */
@@ -28,8 +29,8 @@ function formatWhisper(whisper) {
     }
     lines.push(`Confidence: ${(whisper.confidence * 100).toFixed(0)}%${whisper.knowledgeAvailable ? ' - knowledge available' : ' - limited knowledge'}`);
     const primaryFrame = whisper.reasoningFrame[0];
-    const frontendArtifact = whisper.playbookIds.includes('frontend-artifact-quality');
-    const suggestionLimit = frontendArtifact ? 2 : 1;
+    const frontendArtifact = whisper.playbookIds.some((id) => (0, reasoning_playbooks_js_1.isRichArtifactPlaybookId)(id));
+    const suggestionLimit = frontendArtifact ? 3 : 1;
     const primarySuggestions = whisper.suggestions.slice(0, suggestionLimit);
     if (primaryFrame) {
         lines.push(`Reasoning frame: ${primaryFrame}`);

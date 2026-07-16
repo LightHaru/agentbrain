@@ -7,6 +7,13 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.REASONING_PLAYBOOKS = void 0;
+exports.deserializePlaybook = deserializePlaybook;
+exports.registerLearnedPlaybook = registerLearnedPlaybook;
+exports.getLearnedPlaybooks = getLearnedPlaybooks;
+exports.clearLearnedPlaybooks = clearLearnedPlaybooks;
+exports.countPlaybooks = countPlaybooks;
+exports.isRichArtifactPlaybookId = isRichArtifactPlaybookId;
+exports.hasRichArtifactPlaybook = hasRichArtifactPlaybook;
 exports.matchReasoningPlaybooks = matchReasoningPlaybooks;
 function normalizeReasoningText(message) {
     return message
@@ -346,9 +353,102 @@ exports.REASONING_PLAYBOOKS = [
         approach: 'DexScreener q=PRL + q=WPRL -> compare candidates -> choose only if identity is clear -> answer with timestamp',
     },
 ];
+/**
+ * Learned playbooks — distilled at runtime (e.g. from an Opus-4.8 distillation
+ * pass) and layered ON TOP of the built-in ones. This is how AgentBrain's
+ * reasoning grows smarter over time: new high-quality thinking frames get
+ * registered here, persisted by the trainer, and reloaded on boot.
+ */
+const LEARNED_PLAYBOOKS = [];
+function toRegExp(src) {
+    // Support "/pattern/flags" or a bare pattern (default case-insensitive).
+    const m = /^\/(.*)\/([a-z]*)$/i.exec(src);
+    if (m)
+        return new RegExp(m[1], m[2]);
+    return new RegExp(src, 'i');
+}
+function deserializePlaybook(p) {
+    return {
+        id: p.id,
+        label: p.label,
+        matchAll: p.matchAll.map(toRegExp),
+        matchAny: p.matchAny ? p.matchAny.map(toRegExp) : undefined,
+        suggestions: p.suggestions || [],
+        reasoningFrame: p.reasoningFrame || [],
+        verificationChecks: p.verificationChecks || [],
+        sourcePlan: p.sourcePlan || [],
+        answerContract: p.answerContract || [],
+        evidenceRules: p.evidenceRules,
+        recoverySteps: p.recoverySteps,
+        cautions: p.cautions || [],
+        uncertaintySignals: p.uncertaintySignals || [],
+        approach: p.approach,
+        intentAnchors: p.intentAnchors,
+    };
+}
+/**
+ * Register (or replace) a learned playbook. Returns true if it was newly added,
+ * false if it replaced an existing learned playbook with the same id.
+ */
+function registerLearnedPlaybook(p) {
+    const idx = LEARNED_PLAYBOOKS.findIndex((x) => x.id === p.id);
+    if (idx >= 0) {
+        LEARNED_PLAYBOOKS[idx] = p;
+        return false;
+    }
+    LEARNED_PLAYBOOKS.push(p);
+    return true;
+}
+function getLearnedPlaybooks() {
+    return [...LEARNED_PLAYBOOKS];
+}
+function clearLearnedPlaybooks() {
+    LEARNED_PLAYBOOKS.length = 0;
+}
+function countPlaybooks() {
+    return {
+        builtin: exports.REASONING_PLAYBOOKS.length,
+        learned: LEARNED_PLAYBOOKS.length,
+        total: exports.REASONING_PLAYBOOKS.length + LEARNED_PLAYBOOKS.length,
+    };
+}
+/**
+ * Playbook IDs that unlock the "rich" (deeper) whisper output — the 6-check
+ * verification set, extra suggestions, evidence rules, recovery steps, and
+ * stronger cautions. Historically only the two builtin IDs
+ * ('frontend-artifact-quality', 'code-tool-execution-quality') qualified, which
+ * silently truncated the distilled DESIGN/CODE playbooks (a11y, design tokens,
+ * debug-from-evidence, etc.) down to 2 checks — so that knowledge never reached
+ * Aira at generation time. This is the single source of truth for "is this a
+ * high-craft artifact playbook that deserves the full whisper".
+ */
+const RICH_ARTIFACT_PLAYBOOK_IDS = new Set([
+    // Builtin high-craft playbooks
+    'frontend-artifact-quality',
+    'code-tool-execution-quality',
+]);
+/** Prefixes for distilled (learned) playbooks that also deserve rich output. */
+const RICH_ARTIFACT_PLAYBOOK_PREFIXES = [
+    'distilled-design-', // visual-system, anti-ai-look, layout-responsive, motion-polish, critique, tokens-in-code
+    'distilled-code-', // code-review-quality, code-read-before-write, code-comprehension
+    'distilled-debug-', // debug-from-evidence
+    'distilled-e2e-', // e2e-testing
+    'distilled-testing-', // testing-strategy
+];
+/** True when a single playbook id qualifies for rich whisper output. */
+function isRichArtifactPlaybookId(id) {
+    if (RICH_ARTIFACT_PLAYBOOK_IDS.has(id))
+        return true;
+    return RICH_ARTIFACT_PLAYBOOK_PREFIXES.some((prefix) => id.startsWith(prefix));
+}
+/** True when any of the given playbooks qualifies for rich whisper output. */
+function hasRichArtifactPlaybook(playbooks) {
+    return playbooks.some((playbook) => isRichArtifactPlaybookId(playbook.id));
+}
 function matchReasoningPlaybooks(message) {
     const searchableMessage = `${message} ${normalizeReasoningText(message)}`;
-    return exports.REASONING_PLAYBOOKS.filter((playbook) => {
+    const all = [...exports.REASONING_PLAYBOOKS, ...LEARNED_PLAYBOOKS];
+    return all.filter((playbook) => {
         const allMatch = playbook.matchAll.every((pattern) => pattern.test(searchableMessage));
         const anyMatch = !playbook.matchAny || playbook.matchAny.some((pattern) => pattern.test(searchableMessage));
         return allMatch && anyMatch;
