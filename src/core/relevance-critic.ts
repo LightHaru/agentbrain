@@ -18,6 +18,7 @@
  */
 
 import { Memory } from '../index.js';
+import { synonymsForToken, sharesSynonym } from './synonym-expander.js';
 
 export interface CritiqueOptions {
   /** Query the memories were recalled for. */
@@ -70,10 +71,22 @@ export class RelevanceCritic {
 
     const scored: ScoredMemory[] = memories.map(m => {
       const mTokens = tokens(m.content);
-      // Lexical overlap (Jaccard-ish, biased toward query coverage).
+      // Lexical overlap (Jaccard-ish, biased toward query coverage). A query
+      // token counts as covered if the memory shares it OR shares one of its
+      // domain synonyms ("database"↔"postgres", "timezone"↔"mui gio").
       let overlap = 0;
-      for (const t of qTokens) if (mTokens.has(t)) overlap++;
-      const coverage = qTokens.size > 0 ? overlap / qTokens.size : 0;
+      for (const t of qTokens) {
+        if (mTokens.has(t) || synonymsForToken(t).some(s => mTokens.has(s))) overlap++;
+      }
+      let coverage = qTokens.size > 0 ? overlap / qTokens.size : 0;
+
+      // Multi-word domain synonyms (e.g. "lưu dữ liệu" ↔ "database") share no
+      // tokens, so token overlap misses them. Credit a floor coverage when the
+      // query and memory are linked by such a synonym, so the zero-overlap gate
+      // below does not wrongly discard the intended memory.
+      if (coverage === 0 && sharesSynonym(opts.query, m.content)) {
+        coverage = 0.5;
+      }
 
       const ageDays = this.daysSince(m.lastAccessed || m.timestamp);
       const fresh = ageDays <= staleDays;
@@ -136,14 +149,26 @@ export class RelevanceCritic {
         if (aNums.length && bNums.length) {
           const same = aNums.some(x => bNums.includes(x));
           if (!same) {
+            // Resolve by recency instead of just flagging both: whichever memory
+            // was written/updated more recently is the one to trust. Aira still
+            // sees the conflict, but with an explicit "use the newer" steer so it
+            // doesn't average two contradictory values.
+            const [newer, older] = this.byRecency(a, b);
             conflicts.push(
-              `⚠️ Trí nhớ mâu thuẫn về cùng chủ đề: "${a.content.slice(0, 50)}" vs "${b.content.slice(0, 50)}" — nêu rõ sự khác biệt, ưu tiên nguồn/bản mới nhất, đừng trộn.`,
+              `⚠️ Trí nhớ mâu thuẫn cùng chủ đề — ưu tiên bản MỚI: "${newer.content.slice(0, 50)}" (bỏ qua bản cũ: "${older.content.slice(0, 50)}"). Đừng trộn hai giá trị.`,
             );
           }
         }
       }
     }
     return conflicts.slice(0, 2);
+  }
+
+  /** Return [newer, older] by lastAccessed/timestamp. */
+  private byRecency(a: Memory, b: Memory): [Memory, Memory] {
+    const ta = Date.parse(a.lastAccessed || a.timestamp) || 0;
+    const tb = Date.parse(b.lastAccessed || b.timestamp) || 0;
+    return ta >= tb ? [a, b] : [b, a];
   }
 
   /** Format critic output for prompt injection (compact). */

@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## [Unreleased] — v0.17 upgrade (in progress)
+
+### Phase 1 — recall→inject quick wins (measured, no new runtime deps)
+
+Raised memory-recall quality by closing the vocabulary gap between how a user
+phrases a query and how a memory was worded — the biggest driver of missed
+recalls on the golden set.
+
+#### Added
+- **`src/core/synonym-expander.ts`**: a small, curated, bidirectional domain
+  synonym map (deploy/ops/db/crypto/time/errors). `expandQuery()` widens the
+  query before vector search; `sharesSynonym()` credits multi-word synonym links
+  ("lưu dữ liệu" ↔ "database") that token overlap misses; `synonymsForToken()`
+  feeds single-word synonyms to the lexical critic. Dependency-free.
+- **`tests/synonym-expander.test.ts`** (+9) and dynamic-TTL cases in
+  `freshness-guard.test.ts` (+3).
+
+#### Changed
+- **`src/core/hippocampus.ts`**: `recall()` now searches on the synonym-expanded
+  query and unions a high-precision synonym keyword scan with the vector hits so
+  a synonym match is never ranked out.
+- **`src/core/relevance-critic.ts`**: lexical coverage counts synonym matches;
+  fact conflicts are now resolved by recency (prefer the newer memory, name the
+  older) instead of flagging both symmetrically.
+- **`src/core/freshness-guard.ts`**: per-value volatility scales the category
+  TTL — fast movers (altcoins) expire at 0.5×, stable pegs (USDT/VND) at 3×.
+- **`eslint.config.js`**: added a light flat config (ESLint 9 + typescript-eslint,
+  dev-only) so lint runs green as a regression gate; known cleanups are warnings.
+
+#### Measured (scripts/recall-eval.mjs, golden set, k=5)
+- Precision@5 **70.6% → 87.2%**, Recall@5 **86.7% → 100%**, MRR **0.833 → 0.967**,
+  Clean **60% → 80%**. Intelligence scorecard held at **3/3**. 401/401 tests pass.
+
 ## [0.16.3] - 2026-07-13
 
 ### 🎯 Fix: distilled DESIGN/CODE knowledge now actually reaches Aira at generation time

@@ -49,6 +49,8 @@ export declare class RelevanceCritic {
      * conflicting numeric values (prices, versions, counts). Cheap heuristic.
      */
     private detectConflicts;
+    /** Return [newer, older] by lastAccessed/timestamp. */
+    private byRecency;
     /** Format critic output for prompt injection (compact). */
     formatForInjection(result: CritiqueResult): string;
     private daysSince;

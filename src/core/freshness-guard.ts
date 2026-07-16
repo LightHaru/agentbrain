@@ -40,6 +40,15 @@ const BALANCE_WORDS = /(balance|số dư|hashrate|th\/s|gh\/s|reward|payout|lãi
 // A numeric value (with optional $ , . and unit) — evidence the text carries data.
 const HAS_NUMBER = /\$?\d[\d.,]*\s*(k|m|b|%|usd|usdt|prl|th\/s|gh\/s)?/i;
 
+// Volatility multipliers scale the base TTL by how fast a value actually moves.
+// A small altcoin's price can swing double-digit % in minutes → shorten its
+// window; a fiat peg / stablecoin barely moves → lengthen it. Applied on top of
+// the per-category TTL so "price" is not one-size-fits-all.
+const HIGH_VOLATILITY = /(altcoin|memecoin|shitcoin|prl|pearl|sàn|dex|pump|dump|biến động mạnh)/i;
+const LOW_VOLATILITY = /(stablecoin|usdt|usdc|dai|tỷ giá|vnd|usd\/vnd|peg)/i;
+const HIGH_VOLATILITY_FACTOR = 0.5; // half the window for fast movers
+const LOW_VOLATILITY_FACTOR = 3;    // triple the window for stable pegs
+
 export interface FreshnessVerdict {
   kind: VolatileKind;
   isVolatile: boolean;
@@ -76,9 +85,20 @@ export class FreshnessGuard {
     return 'none';
   }
 
-  private ttlFor(kind: VolatileKind): number {
+  private ttlFor(kind: VolatileKind, content = ''): number {
     if (kind === 'none') return Infinity;
-    return this.cfg.ttlSeconds[kind] ?? 300;
+    const base = this.cfg.ttlSeconds[kind] ?? 300;
+    return base * this.volatilityFactor(content);
+  }
+
+  /** How fast this specific value moves, scaling its TTL. 1 = category default. */
+  private volatilityFactor(content: string): number {
+    if (!content) return 1;
+    // A stable peg overrides a high-volatility keyword (e.g. "USDT" wins over a
+    // generic "sàn" mention) — stable wording is the stronger signal.
+    if (LOW_VOLATILITY.test(content)) return LOW_VOLATILITY_FACTOR;
+    if (HIGH_VOLATILITY.test(content)) return HIGH_VOLATILITY_FACTOR;
+    return 1;
   }
 
   /**
@@ -90,7 +110,7 @@ export class FreshnessGuard {
   judge(content: string, timestampIso: string, nowMs: number = Date.now()): FreshnessVerdict {
     const kind = this.classify(content);
     const isVolatile = kind !== 'none';
-    const ttl = this.ttlFor(kind);
+    const ttl = this.ttlFor(kind, content);
     const t = Date.parse(timestampIso);
     const ageSeconds = Number.isNaN(t) ? Infinity : Math.max(0, (nowMs - t) / 1000);
     const isStale = isVolatile && ageSeconds > ttl;

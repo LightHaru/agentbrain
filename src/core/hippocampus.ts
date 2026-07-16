@@ -17,6 +17,7 @@ import { VectorMemory } from './vector-memory.js';
 import { QueryAnalyzer, QueryContext } from './query-analyzer.js';
 import { isSystemNoise, stripNoiseLines } from './noise-filter.js';
 import { decayedConfidence, shouldForget } from './forgetting-curve.js';
+import { expandQuery, collectSynonyms } from './synonym-expander.js';
 
 export interface ConversationTurn {
   message: string;
@@ -95,11 +96,23 @@ export class Hippocampus {
       console.log(`[Hippocampus] Filtered candidates: ${candidates.length}/${this.memories.length}`);
     }
 
+    // Expand the query with domain synonyms so the embedding search can bridge
+    // vocabulary gaps ("timezone"↔"múi giờ", "lưu dữ liệu"↔"database") that
+    // MiniLM alone misses. The original query is kept verbatim inside.
+    const expandedQuery = expandQuery(query);
+
     // Primary: vector-based semantic recall on filtered candidates
-    const vectorResults = await this.vectorMemory.recall(query, candidates, topic);
+    const vectorResults = await this.vectorMemory.recall(expandedQuery, candidates, topic);
+    const limit = this.queryAnalyzer.getMemoryLimit(queryContext);
+
+    // Memories that literally contain a domain synonym of the query. This is a
+    // high-precision signal (only fires on curated domain terms), so it is safe
+    // to union with vector hits: it rescues the intended memory when MiniLM
+    // ranked it out, without the noise of a full keyword scan.
+    const synonyms = [...collectSynonyms(query)];
+    const synonymHits = synonyms.length > 0 ? this.scanByTerms(synonyms) : [];
 
     if (vectorResults.length > 0) {
-      // Update access metadata only for high-scoring results
       for (const result of vectorResults) {
         if (result.similarity > 0.5) {
           result.memory.accessCount++;
@@ -108,11 +121,19 @@ export class Hippocampus {
         }
       }
 
-      const limit = this.queryAnalyzer.getMemoryLimit(queryContext);
-      return vectorResults.slice(0, limit).map(r => r.memory);
+      const seen = new Set<string>();
+      const merged: Memory[] = [];
+      for (const r of vectorResults) {
+        if (!seen.has(r.memory.id)) { seen.add(r.memory.id); merged.push(r.memory); }
+      }
+      for (const m of synonymHits) {
+        if (!seen.has(m.id)) { seen.add(m.id); merged.push(m); }
+      }
+      return merged.slice(0, limit);
     }
 
-    // Fallback: keyword-based recall (for when vector search returns nothing)
+    // No vector hits: synonym scan first, then the generic keyword fallback.
+    if (synonymHits.length > 0) return synonymHits.slice(0, limit);
     return this.keywordRecall(query, topic);
   }
 

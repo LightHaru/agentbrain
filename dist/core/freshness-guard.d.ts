@@ -38,6 +38,8 @@ export declare class FreshnessGuard {
     /** True when a query is ABOUT volatile data (wording alone is enough here). */
     queryIsVolatile(query: string): VolatileKind;
     private ttlFor;
+    /** How fast this specific value moves, scaling its TTL. 1 = category default. */
+    private volatilityFactor;
     /**
      * Judge one remembered item by its content + timestamp.
      * @param content the memory text
