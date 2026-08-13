@@ -1,2 +1,0 @@
-# Modified
-- Warmth: 99

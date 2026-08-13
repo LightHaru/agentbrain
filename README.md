@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@lightharu/agentbrain"><img src="https://img.shields.io/npm/v/@lightharu/agentbrain?color=blue&label=npm" alt="npm version"></a>
+  <a href="https://github.com/LightHaru/agentbrain/actions/workflows/ci.yml"><img src="https://github.com/LightHaru/agentbrain/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
   <a href="https://clawhub.ai/lightharu/agentbrain"><img src="https://img.shields.io/badge/ClawHub-0.9.0-orange" alt="ClawHub"></a>
   <a href="https://github.com/LightHaru/agentbrain"><img src="https://img.shields.io/github/stars/LightHaru/agentbrain?style=social" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
@@ -619,10 +620,11 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 - [ ] Visual brain state dashboard (web UI)
 - [ ] Memory compression (long-term storage)
 
-### v0.10 (In Progress)
+### v0.10.0 (Released)
 - [x] Phase 5: Learning Loop (personality adapts from feedback)
 - [x] Phase 4: Context Reasoning (status-check short-circuit)
 - [x] Phase 3: Personalized Recall (task-type filter)
+- [x] Memory review & auto-learning system
 - [ ] Cross-language memory (English ↔ Vietnamese)
 - [ ] Memory migration tools
 
