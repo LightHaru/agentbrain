@@ -329,8 +329,9 @@ export class Hippocampus {
       });
     }
 
-    // Procedural: technical decisions/configs
-    if (/config|setting|setup|install|deploy|build|api|token|key|bridge|swap|mine/i.test(msg)) {
+    // Procedural: technical configs. Do not override a decision turn (chot/deploy overlap).
+    const hasDecision = candidates.some((c) => c.type === "episodic" && c.tags.includes("decision"));
+    if (!hasDecision && /config|setting|setup|install|deploy|build|api|token|key|bridge|swap|mine/i.test(msg)) {
       candidates.push({
         content: `[Technical] ${turn.senderName}: ${msg.slice(0, 200)}`,
         type: 'procedural',
